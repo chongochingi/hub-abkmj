@@ -13,6 +13,7 @@ function saveState(state) {
     const current = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
     const merged = { ...current };
     for (const [id, value] of Object.entries(state)) {
+      if (id.startsWith("_")) continue;
       merged[id] = { ...(current[id] || {}), ...value };
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
@@ -21,13 +22,26 @@ function saveState(state) {
   }
 }
 
-export function createLayerPanel(layers) {
+function saveGroups(groupsState) {
+  try {
+    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    all._groups = groupsState;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function createLayerPanel(groups) {
   const list = document.getElementById("layer-list");
   const statusEl = document.getElementById("status");
   const panel = document.getElementById("panel");
   const openBtn = document.getElementById("panel-open");
   const closeBtn = document.getElementById("panel-close");
   const state = loadState();
+  const groupsState = state._groups || {};
+  const cards = new Map();
+  const layers = groups.flatMap((g) => g.layers);
 
   function setOpen(open) {
     panel.hidden = !open;
@@ -37,9 +51,7 @@ export function createLayerPanel(layers) {
   closeBtn.addEventListener("click", () => setOpen(false));
   openBtn.addEventListener("click", () => setOpen(true));
 
-  const cards = new Map();
-
-  for (const layer of layers) {
+  function mountLayer(layer, parent) {
     const enabled = state[layer.id]?.on ?? layer.defaultOn;
     if (layer.hasOpacity && state[layer.id]?.opacity != null) {
       layer.setOpacity(state[layer.id].opacity);
@@ -91,10 +103,37 @@ export function createLayerPanel(layers) {
       setLayer(layer, next);
     });
 
-    list.appendChild(card);
+    parent.appendChild(card);
     cards.set(layer.id, card);
     layer.onChange(() => render(layer));
     setLayer(layer, enabled, { persist: false });
+  }
+
+  for (const group of groups) {
+    const collapsed = groupsState[group.id]?.collapsed ?? group.collapsed ?? false;
+    const section = document.createElement("section");
+    section.className = `source-group${collapsed ? " is-collapsed" : ""}`;
+    section.dataset.source = group.id;
+    section.innerHTML = `
+      <button type="button" class="source-head" aria-expanded="${!collapsed}">
+        <span class="source-chevron" aria-hidden="true">▾</span>
+        <span class="layer-swatch" style="color:${group.color};background:${group.color}"></span>
+        <span class="source-name">${group.name}</span>
+        <span class="source-meta"></span>
+      </button>
+      <div class="source-body"></div>
+    `;
+    const body = section.querySelector(".source-body");
+    const head = section.querySelector(".source-head");
+    head.addEventListener("click", () => {
+      const next = !section.classList.contains("is-collapsed");
+      section.classList.toggle("is-collapsed", next);
+      head.setAttribute("aria-expanded", String(!next));
+      groupsState[group.id] = { collapsed: next };
+      saveGroups(groupsState);
+    });
+    for (const layer of group.layers) mountLayer(layer, body);
+    list.appendChild(section);
   }
 
   function setLayer(layer, on, { persist = true } = {}) {

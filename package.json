@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 5003"
   },
   "dependencies": {
+    "hls.js": "^1.7.0",
     "leaflet": "^1.9.4"
   },
   "devDependencies": {

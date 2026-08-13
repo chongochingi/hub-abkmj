@@ -6,9 +6,23 @@ services:
     restart: unless-stopped
     ports:
       - "5003:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - liveatc-proxy
     networks:
       - default
       - infra
+
+  liveatc-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.liveatc
+    image: hub-abkmj-liveatc:latest
+    container_name: hub-abkmj-liveatc
+    restart: unless-stopped
+    networks:
+      - default
 
 networks:
   infra:

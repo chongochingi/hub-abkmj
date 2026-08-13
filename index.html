@@ -6,7 +6,7 @@
     <title>Hub · abkmj</title>
     <meta
       name="description"
-      content="Live aircraft, NEXRAD radar, and wildfire incidents on one map."
+      content="Live aircraft, NEXRAD, NWS warnings, GOES, Mesonet, and wildfires on one map."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -23,7 +23,7 @@
       <header class="panel-head">
         <div>
           <a class="brand" href="https://abkmj.com">hub.abkmj.com</a>
-          <p class="panel-sub">Oklahoma City data overlay</p>
+          <p class="panel-sub">Radar · aircraft · wildfire</p>
         </div>
         <button id="panel-close" class="icon-btn" aria-label="Close layers">
           ✕
@@ -44,6 +44,26 @@
 
     <button id="panel-open" class="fab" aria-label="Open layers" hidden>
       Layers
+    </button>
+
+    <aside id="birdnet-panel" class="panel panel-right" aria-label="Audio">
+      <header class="panel-head">
+        <div>
+          <div class="brand">Audio</div>
+          <p id="birdnet-sub" class="panel-sub">Yard · ATC</p>
+        </div>
+        <button id="birdnet-min" class="icon-btn bn-min" aria-label="Minimize audio">
+          –
+        </button>
+      </header>
+      <div id="birdnet-body" class="bn-body"></div>
+      <footer class="panel-foot">
+        <div id="birdnet-status" class="status">Connecting…</div>
+      </footer>
+    </aside>
+
+    <button id="birdnet-open" class="fab fab-right" aria-label="Open audio" hidden>
+      Audio
     </button>
 
     <button id="recenter" class="map-btn" aria-label="Recenter on Oklahoma City">

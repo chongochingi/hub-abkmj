@@ -1,15 +1,20 @@
 # hub.abkmj.com
 
-A single map for live aircraft, NEXRAD radar, and current wildfires. Each overlay can be turned on or off from the layer panel.
+A single map for live aircraft, RadarScope-class NEXRAD, NWS hazards, GOES, Oklahoma Mesonet, rainfall, and wildfires. The layer panel is grouped by source; click a section header to collapse it.
 
 ## Layers
 
 - **Aircraft** — polled from `atm.abkmj.com` (same feed as ADSB Display). Proxied at `/api/aircraft` because that API does not send CORS headers.
-- **NEXRAD radar** — Iowa Environmental Mesonet CONUS base reflectivity tiles, refreshed every 5 minutes. Opacity is adjustable.
-- **Wildfires** — current incidents. Tries the ArcGIS URL you supplied first, then falls back to [Esri Living Atlas / NIFC USA Current Wildfires](https://www.arcgis.com/home/item.html?id=d957997ccee7408287a963600a77f61f) if that service 400s.
-- **Fire perimeters** — mapped burn outlines from the same Living Atlas service.
+- **Radar** — per-site [NWS/NCEP super-resolution](https://opengeo.ncep.noaa.gov/geoserver/www/index.html) NEXRAD: reflectivity, velocity, hydrometeors, 1-hour and storm-total precip. Click sites on the map. Loops prefetch frames so playback stays on-screen.
+- **Satellite** — GOES-East CONUS visible, IR, and water vapor ([CIMSS RealEarth](https://realearth.ssec.wisc.edu/)), with the same play / loop / clock controls as radar.
+- **Mesonet** — [Oklahoma Mesonet](https://www.mesonet.org/about/data-descriptions/current-observations-csv) wind barbs, rain, temp, humidity.
+- **Precipitation** — [MRMS](https://mesonet.agron.iastate.edu/ogc/) 1 / 24 / 72-hour QPE.
+- **Hazards** — NWS storm-based warning polygons (IEM), SPC/NWS watches, NEXRAD SCIT storm tracks (for selected radars), and local storm reports.
+- **Audio** — right-side panel (minimizable) with collapsible **BirdNET** (yard detections + listen) and **ATC** ([LiveATC](https://www.liveatc.net/) KOKC Twr, Max Westheimer / KOUN, KTUL). LiveATC is proxied through an Icecast metadata stripper at `/api/liveatc/` so browsers can play it.
+- **Lakes** — Oklahoma [USGS](https://waterdata.usgs.gov/) lake / reservoir stage (gage height or surface elevation).
+- **Wildfire** — incidents and burn perimeters together, with a shared recency filter.
 
-Layer on/off state and radar opacity are saved in `localStorage`.
+Layer on/off state, collapsed sections, and overlay options are saved in `localStorage`.
 
 ## Local dev
 

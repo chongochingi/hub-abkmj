@@ -12,6 +12,16 @@ export default defineConfig({
         rewrite: () => "/api/data",
         secure: true,
       },
+      "/api/birdnet": {
+        target: "http://127.0.0.1:8085",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/birdnet/, "/api/v2"),
+      },
+      "/api/liveatc": {
+        target: "http://127.0.0.1:8091",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/liveatc/, ""),
+      },
     },
   },
   preview: {
