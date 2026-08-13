@@ -105,9 +105,65 @@ export const AUDIO_FEEDS = [
   { id: "ktul1", label: "KTUL", kind: "atc", mount: "ktul1" },
 ];
 
-export const USGS_LAKES_URL =
-  "https://waterservices.usgs.gov/nwis/iv/?format=json&stateCd=ok&siteType=LK&parameterCd=62614,62615,00062,00065&siteStatus=active";
+export const DEFAULT_LAKE_STATE = "ok";
+export const US_STATES = [
+  { id: "al", label: "Alabama" },
+  { id: "ak", label: "Alaska" },
+  { id: "az", label: "Arizona" },
+  { id: "ar", label: "Arkansas" },
+  { id: "ca", label: "California" },
+  { id: "co", label: "Colorado" },
+  { id: "ct", label: "Connecticut" },
+  { id: "de", label: "Delaware" },
+  { id: "dc", label: "District of Columbia" },
+  { id: "fl", label: "Florida" },
+  { id: "ga", label: "Georgia" },
+  { id: "hi", label: "Hawaii" },
+  { id: "id", label: "Idaho" },
+  { id: "il", label: "Illinois" },
+  { id: "in", label: "Indiana" },
+  { id: "ia", label: "Iowa" },
+  { id: "ks", label: "Kansas" },
+  { id: "ky", label: "Kentucky" },
+  { id: "la", label: "Louisiana" },
+  { id: "me", label: "Maine" },
+  { id: "md", label: "Maryland" },
+  { id: "ma", label: "Massachusetts" },
+  { id: "mi", label: "Michigan" },
+  { id: "mn", label: "Minnesota" },
+  { id: "ms", label: "Mississippi" },
+  { id: "mo", label: "Missouri" },
+  { id: "mt", label: "Montana" },
+  { id: "ne", label: "Nebraska" },
+  { id: "nv", label: "Nevada" },
+  { id: "nh", label: "New Hampshire" },
+  { id: "nj", label: "New Jersey" },
+  { id: "nm", label: "New Mexico" },
+  { id: "ny", label: "New York" },
+  { id: "nc", label: "North Carolina" },
+  { id: "nd", label: "North Dakota" },
+  { id: "oh", label: "Ohio" },
+  { id: "ok", label: "Oklahoma" },
+  { id: "or", label: "Oregon" },
+  { id: "pa", label: "Pennsylvania" },
+  { id: "ri", label: "Rhode Island" },
+  { id: "sc", label: "South Carolina" },
+  { id: "sd", label: "South Dakota" },
+  { id: "tn", label: "Tennessee" },
+  { id: "tx", label: "Texas" },
+  { id: "ut", label: "Utah" },
+  { id: "vt", label: "Vermont" },
+  { id: "va", label: "Virginia" },
+  { id: "wa", label: "Washington" },
+  { id: "wv", label: "West Virginia" },
+  { id: "wi", label: "Wisconsin" },
+  { id: "wy", label: "Wyoming" },
+];
 export const USGS_LAKES_POLL_MS = 15 * 60 * 1000;
+
+export function usgsLakesUrl(stateCd) {
+  return `https://waterservices.usgs.gov/nwis/iv/?format=json&stateCd=${stateCd}&siteType=LK&parameterCd=62614,62615,00062,00065&siteStatus=active`;
+}
 export const USACE_POOL_URL =
   "https://cwms-data.usace.army.mil/cwms-data/levels?office=SWT&level-id-mask=*Elev*Top%20of%20Conservation*&page-size=500";
 /** Normal / conservation pool elevation (ft) for Oklahoma lakes by USGS site number. */

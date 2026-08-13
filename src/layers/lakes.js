@@ -1,10 +1,13 @@
 import L from "leaflet";
 import {
+  DEFAULT_LAKE_STATE,
   LAKE_NORMAL_POOL_FT,
   LAKE_USACE_CODES,
+  STORAGE_KEY,
+  US_STATES,
   USACE_POOL_URL,
   USGS_LAKES_POLL_MS,
-  USGS_LAKES_URL,
+  usgsLakesUrl,
 } from "../config.js";
 
 const PARAM_PRIORITY = {
@@ -26,8 +29,27 @@ function shortName(name) {
   return String(name || "Lake")
     .replace(/\s+near\s+.+$/i, "")
     .replace(/\s+at\s+.+$/i, "")
-    .replace(/,\s*OK$/i, "")
+    .replace(/,\s*[A-Z]{2}$/i, "")
     .trim();
+}
+
+function loadLakeState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}").lakes?.state;
+    return US_STATES.some((s) => s.id === saved) ? saved : DEFAULT_LAKE_STATE;
+  } catch {
+    return DEFAULT_LAKE_STATE;
+  }
+}
+
+function saveLakeState(stateCd) {
+  try {
+    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    all.lakes = { ...(all.lakes || {}), state: stateCd };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore quota */
+  }
 }
 
 function fmtWhen(iso) {
@@ -164,9 +186,13 @@ function lakeIcon(site, showLabel) {
 export function createLakesLayer(map) {
   const group = L.layerGroup();
   const markers = new Map();
+  let stateCd = loadLakeState();
   let sites = [];
   let usacePools = null;
+  let extrasRoot = null;
   let timer = null;
+  let requestId = 0;
+  let enabled = false;
   let count = 0;
   let error = null;
   let onChange = () => {};
@@ -204,15 +230,37 @@ export function createLakesLayer(map) {
     count = sites.length;
   }
 
+  function renderExtras() {
+    if (!extrasRoot) return;
+    const select = extrasRoot.querySelector("select");
+    if (select) select.value = stateCd;
+  }
+
+  function setStateCd(next) {
+    if (!US_STATES.some((s) => s.id === next) || next === stateCd) return;
+    stateCd = next;
+    saveLakeState(stateCd);
+    sites = [];
+    render();
+    renderExtras();
+    onChange();
+    if (enabled) tick();
+  }
+
   async function tick() {
+    const id = ++requestId;
     try {
       if (!usacePools) usacePools = await loadUsacePools();
-      const res = await fetch(USGS_LAKES_URL, { cache: "no-store" });
+      if (id !== requestId) return;
+      const res = await fetch(usgsLakesUrl(stateCd), { cache: "no-store" });
       if (!res.ok) throw new Error(`USGS lakes HTTP ${res.status}`);
-      sites = parseSeries(await res.json()).map((s) => attachPool(s, usacePools));
+      const data = await res.json();
+      if (id !== requestId) return;
+      sites = parseSeries(data).map((s) => attachPool(s, usacePools));
       render();
       error = null;
     } catch (err) {
+      if (id !== requestId) return;
       error = err.message || "USGS lake levels unavailable";
     }
     onChange();
@@ -233,12 +281,32 @@ export function createLakesLayer(map) {
     onChange(fn) {
       onChange = fn;
     },
+    mountExtras(container) {
+      extrasRoot = container;
+      container.innerHTML = `
+        <label class="layer-select-row">
+          State
+          <select class="layer-select" aria-label="Lake levels state">
+            ${US_STATES.map(
+              (s) =>
+                `<option value="${s.id}" ${s.id === stateCd ? "selected" : ""}>${s.label}</option>`,
+            ).join("")}
+          </select>
+        </label>
+      `;
+      container.querySelector("select").addEventListener("change", (event) => {
+        setStateCd(event.target.value);
+      });
+      renderExtras();
+    },
     enable() {
+      enabled = true;
       group.addTo(map);
       tick();
       timer = setInterval(tick, USGS_LAKES_POLL_MS);
     },
     disable() {
+      enabled = false;
       clearInterval(timer);
       timer = null;
       map.removeLayer(group);
