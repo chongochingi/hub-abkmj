@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hub · abkmj</title>
+    <meta
+      name="description"
+      content="Live aircraft, NEXRAD radar, and wildfire incidents on one map."
+    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <aside id="panel" class="panel" aria-label="Map layers">
+      <header class="panel-head">
+        <div>
+          <a class="brand" href="https://abkmj.com">hub.abkmj.com</a>
+          <p class="panel-sub">Oklahoma City data overlay</p>
+        </div>
+        <button id="panel-close" class="icon-btn" aria-label="Close layers">
+          ✕
+        </button>
+      </header>
+
+      <div id="layer-list" class="layer-list"></div>
+
+      <footer class="panel-foot">
+        <div id="status" class="status">Connecting…</div>
+        <div class="links">
+          <a href="https://atm.abkmj.com" target="_blank" rel="noreferrer">ATM</a>
+          <a href="https://adsb.abkmj.com" target="_blank" rel="noreferrer">Feed</a>
+          <a href="https://abkmj.com" target="_blank" rel="noreferrer">Blog</a>
+        </div>
+      </footer>
+    </aside>
+
+    <button id="panel-open" class="fab" aria-label="Open layers" hidden>
+      Layers
+    </button>
+
+    <button id="recenter" class="map-btn" aria-label="Recenter on Oklahoma City">
+      ⌖
+    </button>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

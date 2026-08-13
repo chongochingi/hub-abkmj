@@ -1,0 +1,16 @@
+services:
+  web:
+    build: .
+    image: hub-abkmj:latest
+    container_name: hub-abkmj
+    restart: unless-stopped
+    ports:
+      - "5003:80"
+    networks:
+      - default
+      - infra
+
+networks:
+  infra:
+    name: infra_default
+    external: true
