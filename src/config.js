@@ -19,13 +19,21 @@ export const NEXRAD_SITE_PRODUCTS = [
   { id: "boha", label: "1-hr precip", layer: "boha", style: "radar_boha", filter: "dark", iem: "DAA" },
   { id: "bdsa", label: "Storm total", layer: "bdsa", style: "radar_bdsa", filter: "dark", iem: "DTA" },
 ];
-export const NEXRAD_REFRESH_MS = 5 * 60 * 1000;
+export const NEXRAD_REFRESH_MS = 2 * 60 * 1000;
 export const NEXRAD_FRAME_MS = 500;
 export const NEXRAD_LOOP_OPTIONS = [
+  { minutes: 15, label: "15 min" },
   { minutes: 30, label: "30 min" },
   { minutes: 60, label: "1 hour" },
   { minutes: 120, label: "2 hours" },
   { minutes: 180, label: "3 hours" },
+  { minutes: 360, label: "6 hours" },
+];
+export const LOOP_SPEED_OPTIONS = [
+  { id: 0.5, label: "0.5×" },
+  { id: 1, label: "1×" },
+  { id: 2, label: "2×" },
+  { id: 4, label: "4×" },
 ];
 export const DEFAULT_RADAR_SITES = ["TLX"];
 
@@ -87,10 +95,12 @@ export const GOES_CHANNELS = [
 export const GOES_REFRESH_MS = 5 * 60 * 1000;
 export const GOES_FRAME_MS = 500;
 export const GOES_LOOP_OPTIONS = [
+  { minutes: 15, label: "15 min" },
   { minutes: 30, label: "30 min" },
   { minutes: 60, label: "1 hour" },
   { minutes: 120, label: "2 hours" },
   { minutes: 180, label: "3 hours" },
+  { minutes: 360, label: "6 hours" },
 ];
 
 export const BIRDNET_API = "/api/birdnet";
@@ -203,3 +213,16 @@ export const LAKE_USACE_CODES = {
 };
 
 export const STORAGE_KEY = "hub-abkmj-layers";
+
+export const MAP_BASES = {
+  regular: {
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
+};

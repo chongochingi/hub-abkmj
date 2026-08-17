@@ -1,6 +1,7 @@
 import L from "leaflet";
 import {
   DEFAULT_RADAR_SITES,
+  LOOP_SPEED_OPTIONS,
   NCEP_WMS_BASE,
   NEXRAD_FRAME_MS,
   NEXRAD_LOOP_OPTIONS,
@@ -11,6 +12,7 @@ import {
   NEXRAD_SITES_URL,
   STORAGE_KEY,
 } from "../config.js";
+import { mountPlaybackTrack } from "../playbackDock.js";
 
 function loadRadarState() {
   try {
@@ -94,7 +96,8 @@ function filterRadarPixels(data, mode = "reflectivity", gentle = false) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
-    if (r + g + b < (gentle ? 24 : 40)) {
+    // Keep weak returns — RadarScope-style detail lives in the dark greens/blues.
+    if (r + g + b < (gentle ? 18 : 28)) {
       data[i + 3] = 0;
       continue;
     }
@@ -112,11 +115,12 @@ function filterRadarPixels(data, mode = "reflectivity", gentle = false) {
       h *= 60;
       if (h < 0) h += 360;
     }
-    if (s < 0.08) {
+    // Only scrub near-gray noise, not light precip echoes.
+    if (s < 0.05 && v < 0.35) {
       data[i + 3] = 0;
       continue;
     }
-    if (h >= 25 && h <= 100 && s < 0.45 && v < 0.8) {
+    if (h >= 25 && h <= 100 && s < 0.35 && v < 0.55) {
       data[i + 3] = 0;
     }
   }
@@ -301,8 +305,9 @@ const SuperResWms = L.TileLayer.WMS.extend({
     const blit = (src) => {
       if (canvas._radarGen !== gen || !this._wantedCoords(coords)) return false;
       const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(src, 0, 0);
+      ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
       this._notifyLeaflet(canvas);
       return true;
     };
@@ -369,6 +374,7 @@ const SuperResWms = L.TileLayer.WMS.extend({
         off.width = size.x;
         off.height = size.y;
         const ctx = off.getContext("2d", { willReadFrequently: true });
+        ctx.imageSmoothingEnabled = false;
         ctx.drawImage(img, 0, 0, off.width, off.height);
         try {
           const imageData = ctx.getImageData(0, 0, off.width, off.height);
@@ -407,9 +413,13 @@ const SuperResWms = L.TileLayer.WMS.extend({
 
 export function createNexradLayer(map) {
   const saved = loadRadarState();
-  const selected = new Set(saved.selected || DEFAULT_RADAR_SITES);
+  const savedSites = Array.isArray(saved.selected) ? saved.selected : DEFAULT_RADAR_SITES;
+  let selectedId = savedSites[0] || DEFAULT_RADAR_SITES[0] || null;
   let showSites = saved.showSites !== false;
-  let loopMinutes = saved.loopMinutes || 60;
+  let loopMinutes = NEXRAD_LOOP_OPTIONS.some((o) => o.minutes === saved.loopMinutes)
+    ? saved.loopMinutes
+    : 60;
+  let speed = LOOP_SPEED_OPTIONS.some((o) => o.id === saved.speed) ? saved.speed : 1;
   let opacity = saved.opacity ?? 0.55;
   let product =
     NEXRAD_SITE_PRODUCTS.find((p) => p.id === saved.product) || NEXRAD_SITE_PRODUCTS[0];
@@ -419,6 +429,8 @@ export function createNexradLayer(map) {
   let siteScans = new Map();
   let playTimer = null;
   let liveTimer = null;
+  let playGen = 0;
+  let refreshBusy = false;
   let enabled = false;
   let error = null;
   let onChange = () => {};
@@ -429,37 +441,38 @@ export function createNexradLayer(map) {
   const siteMarkers = new Map();
   let sites = [];
 
-  const playback = document.createElement("div");
-  playback.className = "radar-playback";
-  playback.hidden = true;
-  playback.innerHTML = `
-    <span class="playback-kind">Radar</span>
-    <button type="button" class="play-btn" aria-label="Play radar loop">Play</button>
-    <div class="radar-clock">Live</div>
-    <label class="radar-loop-label">
-      Loop
-      <select class="radar-loop">
-        ${NEXRAD_LOOP_OPTIONS.map(
-          (opt) =>
-            `<option value="${opt.minutes}" ${opt.minutes === loopMinutes ? "selected" : ""}>${opt.label}</option>`,
-        ).join("")}
-      </select>
-    </label>
-  `;
-  document.body.appendChild(playback);
-
-  const playBtn = playback.querySelector(".play-btn");
-  const clockEl = playback.querySelector(".radar-clock");
-  const loopSelect = playback.querySelector(".radar-loop");
+  const {
+    playBtn,
+    clockEl,
+    loopSelect,
+    speedSelect,
+    setVisible: setPlaybackVisible,
+  } = mountPlaybackTrack({
+    id: "radar",
+    label: "Radar",
+    playLabel: "radar",
+    loopOptions: NEXRAD_LOOP_OPTIONS,
+    loopMinutes,
+    speed,
+  });
 
   function persist() {
     saveRadarState({
-      selected: [...selected],
+      selected: selectedId ? [selectedId] : [],
       showSites,
       loopMinutes,
+      speed,
       opacity,
       product: product.id,
     });
+  }
+
+  function frameDelayMs() {
+    return Math.max(50, Math.round(NEXRAD_FRAME_MS / speed));
+  }
+
+  function selectedSet() {
+    return selectedId ? new Set([selectedId]) : new Set();
   }
 
   function labelSites() {
@@ -473,7 +486,9 @@ export function createNexradLayer(map) {
   function renderMarker(site) {
     const marker = siteMarkers.get(site.id);
     if (!marker) return;
-    marker.setIcon(siteIcon(site, selected.has(site.id), labelSites()));
+    const on = site.id === selectedId;
+    marker.setIcon(siteIcon(site, on, labelSites()));
+    marker.setZIndexOffset(on ? 250 : 120);
   }
 
   function renderAllMarkers() {
@@ -495,12 +510,15 @@ export function createNexradLayer(map) {
       opacity,
       pane: "overlayPane",
       className: "nexrad-tiles",
+      // 512px WMS tiles = 4× pixels vs default 256 for the same map area.
+      tileSize: 512,
       maxZoom: 18,
       minZoom: 4,
+      // Don't combine with tileSize 512 — detectRetina halves tileSize and shifts zoom.
       detectRetina: false,
       updateWhenZooming: false,
       updateWhenIdle: false,
-      keepBuffer: 4,
+      keepBuffer: 3,
     });
     // Seed live bust so createTile and setFrame share one generation.
     layer._liveBust = Date.now();
@@ -509,6 +527,7 @@ export function createNexradLayer(map) {
   }
 
   function ensureTiles() {
+    const selected = selectedSet();
     for (const id of selected) {
       if (tileLayers.has(id)) continue;
       const layer = makeLayer(id);
@@ -556,14 +575,14 @@ export function createNexradLayer(map) {
 
     for (const site of sites) {
       const marker = L.marker([site.lat, site.lon], {
-        icon: siteIcon(site, selected.has(site.id), labelSites()),
-        zIndexOffset: selected.has(site.id) ? 250 : 120,
+        icon: siteIcon(site, site.id === selectedId, labelSites()),
+        zIndexOffset: site.id === selectedId ? 250 : 120,
       });
       marker.bindTooltip(
         `${site.id} · ${site.name}${site.state ? `, ${site.state}` : ""}`,
         { direction: "top", offset: [0, -8] },
       );
-      marker.on("click", () => toggleSite(site.id));
+      marker.on("click", () => selectSite(site.id));
       siteMarkers.set(site.id, marker);
       marker.addTo(sitesLayer);
     }
@@ -592,8 +611,9 @@ export function createNexradLayer(map) {
     const startIso = new Date(start).toISOString().replace(/\.\d{3}Z$/, "Z");
     const endIso = new Date(end).toISOString().replace(/\.\d{3}Z$/, "Z");
     const next = new Map();
+    const ids = selectedId ? [selectedId] : [];
     await Promise.all(
-      [...selected].map(async (id) => {
+      ids.map(async (id) => {
         let times = [];
         try {
           times = await loadNcepTimes(id);
@@ -635,6 +655,7 @@ export function createNexradLayer(map) {
 
   function stopPlayback() {
     playing = false;
+    playGen += 1;
     clearInterval(playTimer);
     playTimer = null;
     playBtn.textContent = "Play";
@@ -642,14 +663,52 @@ export function createNexradLayer(map) {
     showLive();
   }
 
+  function armPlayTimer() {
+    clearInterval(playTimer);
+    playTimer = setInterval(() => {
+      if (!playing || !frames.length) return;
+      frameIndex = (frameIndex + 1) % frames.length;
+      applyFrame(frames[frameIndex]);
+    }, frameDelayMs());
+  }
+
+  function restoreFrameIndex(prevTs) {
+    if (!frames.length) {
+      frameIndex = 0;
+      return;
+    }
+    if (!prevTs) {
+      frameIndex = Math.min(frameIndex, frames.length - 1);
+      return;
+    }
+    const exact = frames.indexOf(prevTs);
+    if (exact >= 0) {
+      frameIndex = exact;
+      return;
+    }
+    let best = 0;
+    let bestDelta = Infinity;
+    const target = new Date(prevTs).getTime();
+    frames.forEach((ts, i) => {
+      const delta = Math.abs(new Date(ts).getTime() - target);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        best = i;
+      }
+    });
+    frameIndex = best;
+  }
+
   async function startPlayback() {
-    if (!selected.size) return;
+    if (!selectedId) return;
+    const gen = ++playGen;
     playing = false;
     clearInterval(playTimer);
     playTimer = null;
     playBtn.textContent = "…";
     try {
       await loadScans();
+      if (gen !== playGen) return;
       if (!frames.length) {
         error = "No radar frames in that window";
         stopPlayback();
@@ -658,40 +717,88 @@ export function createNexradLayer(map) {
       }
       ensureTiles();
       await Promise.all([...tileLayers.values()].map(waitForTiles));
+      if (gen !== playGen) return;
       await Promise.all(
         [...tileLayers.entries()].map(([id, layer]) =>
           layer.prefetch(siteScans.get(id) || frames),
         ),
       );
+      if (gen !== playGen) return;
       error = null;
       playing = true;
       frameIndex = 0;
       playBtn.textContent = "Pause";
       playBtn.setAttribute("aria-label", "Pause radar loop");
       applyFrame(frames[0]);
-      playTimer = setInterval(() => {
-        if (!playing || !frames.length) return;
-        frameIndex = (frameIndex + 1) % frames.length;
-        applyFrame(frames[frameIndex]);
-      }, NEXRAD_FRAME_MS);
+      armPlayTimer();
     } catch (err) {
+      if (gen !== playGen) return;
       error = err.message || "Radar loop unavailable";
       stopPlayback();
     }
     onChange();
   }
 
-  function toggleSite(id) {
-    if (selected.has(id)) selected.delete(id);
-    else selected.add(id);
-    persist();
-    const site = siteById(id);
-    if (site) {
-      const marker = siteMarkers.get(id);
-      if (marker) marker.setZIndexOffset(selected.has(id) ? 250 : 120);
-      renderMarker(site);
+  /** Pull new scans into an already-playing loop without restarting from the beginning. */
+  async function refreshLoopFrames() {
+    if (!playing || !selectedId || refreshBusy) return;
+    refreshBusy = true;
+    const gen = playGen;
+    const prevTs = frames[frameIndex] || null;
+    const before = new Set(frames);
+    try {
+      await loadScans();
+      if (gen !== playGen || !playing) return;
+      if (!frames.length) return;
+      const added = frames.filter((ts) => !before.has(ts));
+      if (added.length) {
+        ensureTiles();
+        await Promise.all(
+          [...tileLayers.entries()].map(([id, layer]) => {
+            const scans = siteScans.get(id) || [];
+            const fresh = added.filter((ts) => scans.includes(ts));
+            return fresh.length ? layer.prefetch(fresh) : Promise.resolve();
+          }),
+        );
+        if (gen !== playGen || !playing) return;
+      }
+      restoreFrameIndex(prevTs);
+      error = null;
+      onChange();
+    } catch (err) {
+      if (gen !== playGen) return;
+      error = err.message || "Radar loop refresh failed";
+      onChange();
+    } finally {
+      refreshBusy = false;
     }
+  }
+
+  function selectSite(id) {
+    if (selectedId === id) return;
+    const prev = selectedId;
+    selectedId = id;
+    persist();
+    if (prev) {
+      const old = siteById(prev);
+      if (old) renderMarker(old);
+    }
+    const site = siteById(id);
+    if (site) renderMarker(site);
     if (playing) startPlayback();
+    else showLive();
+    renderExtras();
+    onChange();
+  }
+
+  function clearSite() {
+    if (!selectedId) return;
+    const prev = selectedId;
+    selectedId = null;
+    persist();
+    const site = siteById(prev);
+    if (site) renderMarker(site);
+    if (playing) stopPlayback();
     else showLive();
     renderExtras();
     onChange();
@@ -737,14 +844,9 @@ export function createNexradLayer(map) {
     extrasRoot.querySelectorAll("[data-product]").forEach((btn) => {
       btn.classList.toggle("is-on", btn.dataset.product === product.id);
     });
-    const chips = [...selected]
-      .map(
-        (id) =>
-          `<button type="button" class="radar-chip" data-site="${id}">${id} ×</button>`,
-      )
-      .join("");
-    extrasRoot.querySelector(".radar-selected").innerHTML =
-      chips || `<span class="radar-hint">Click a site on the map</span>`;
+    extrasRoot.querySelector(".radar-selected").innerHTML = selectedId
+      ? `<button type="button" class="radar-chip" data-site="${selectedId}">${selectedId} ×</button>`
+      : `<span class="radar-hint">Click one site on the map</span>`;
     extrasRoot.querySelector(".radar-show-sites").checked = showSites;
   }
 
@@ -757,6 +859,12 @@ export function createNexradLayer(map) {
     loopMinutes = Number(loopSelect.value);
     persist();
     if (playing) startPlayback();
+  });
+
+  speedSelect.addEventListener("change", () => {
+    speed = Number(speedSelect.value) || 1;
+    persist();
+    if (playing) armPlayTimer();
   });
 
   let zoomTimer = null;
@@ -796,13 +904,13 @@ export function createNexradLayer(map) {
   return {
     id: "nexrad",
     name: "NEXRAD",
-    description: "Super-res · click sites on the map",
+    description: "Super-res · one site at a time",
     color: "#22c55e",
     defaultOn: true,
     hasOpacity: true,
     getOpacity: () => opacity,
-    getCount: () => selected.size,
-    getSelectedSites: () => [...selected],
+    getCount: () => (selectedId ? 1 : 0),
+    getSelectedSites: () => (selectedId ? [selectedId] : []),
     getError: () => error,
     onChange(fn) {
       onChange = fn;
@@ -837,13 +945,13 @@ export function createNexradLayer(map) {
       });
       container.querySelector(".radar-selected").addEventListener("click", (event) => {
         const btn = event.target.closest("[data-site]");
-        if (btn) toggleSite(btn.dataset.site);
+        if (btn) clearSite();
       });
       renderExtras();
     },
     async enable() {
       enabled = true;
-      playback.hidden = false;
+      setPlaybackVisible(true);
       radarGroup.addTo(map);
       try {
         await loadSites();
@@ -854,7 +962,8 @@ export function createNexradLayer(map) {
       if (showSites) sitesLayer.addTo(map);
       showLive({ bust: true });
       liveTimer = setInterval(() => {
-        if (!playing) showLive({ bust: true });
+        if (playing) refreshLoopFrames();
+        else showLive({ bust: true });
       }, NEXRAD_REFRESH_MS);
       renderExtras();
       onChange();
@@ -864,7 +973,7 @@ export function createNexradLayer(map) {
       stopPlayback();
       clearInterval(liveTimer);
       liveTimer = null;
-      playback.hidden = true;
+      setPlaybackVisible(false);
       map.removeLayer(radarGroup);
       map.removeLayer(sitesLayer);
     },

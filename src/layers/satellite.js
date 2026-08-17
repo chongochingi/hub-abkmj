@@ -6,8 +6,10 @@ import {
   GOES_REFRESH_MS,
   GOES_TILE_URL,
   GOES_TIMES_URL,
+  LOOP_SPEED_OPTIONS,
   STORAGE_KEY,
 } from "../config.js";
+import { mountPlaybackTrack } from "../playbackDock.js";
 
 function loadState() {
   try {
@@ -198,7 +200,10 @@ export function createSatelliteLayer(map) {
     GOES_CHANNELS.find((c) => c.id === "ir") ||
     GOES_CHANNELS[0];
   let opacity = saved.opacity ?? 0.7;
-  let loopMinutes = saved.loopMinutes || 60;
+  let loopMinutes = GOES_LOOP_OPTIONS.some((o) => o.minutes === saved.loopMinutes)
+    ? saved.loopMinutes
+    : 60;
+  let speed = LOOP_SPEED_OPTIONS.some((o) => o.id === saved.speed) ? saved.speed : 1;
   let extrasRoot = null;
   let layer = null;
   let allTimes = [];
@@ -211,31 +216,27 @@ export function createSatelliteLayer(map) {
   let error = null;
   let onChange = () => {};
 
-  const playback = document.createElement("div");
-  playback.className = "radar-playback sat-playback";
-  playback.hidden = true;
-  playback.innerHTML = `
-    <span class="playback-kind">Sat</span>
-    <button type="button" class="play-btn" aria-label="Play satellite loop">Play</button>
-    <div class="radar-clock">Live</div>
-    <label class="radar-loop-label">
-      Loop
-      <select class="radar-loop">
-        ${GOES_LOOP_OPTIONS.map(
-          (opt) =>
-            `<option value="${opt.minutes}" ${opt.minutes === loopMinutes ? "selected" : ""}>${opt.label}</option>`,
-        ).join("")}
-      </select>
-    </label>
-  `;
-  document.body.appendChild(playback);
-
-  const playBtn = playback.querySelector(".play-btn");
-  const clockEl = playback.querySelector(".radar-clock");
-  const loopSelect = playback.querySelector(".radar-loop");
+  const {
+    playBtn,
+    clockEl,
+    loopSelect,
+    speedSelect,
+    setVisible: setPlaybackVisible,
+  } = mountPlaybackTrack({
+    id: "satellite",
+    label: "Sat",
+    playLabel: "satellite",
+    loopOptions: GOES_LOOP_OPTIONS,
+    loopMinutes,
+    speed,
+  });
 
   function persist() {
-    saveState({ channel: channel.id, opacity, loopMinutes });
+    saveState({ channel: channel.id, opacity, loopMinutes, speed });
+  }
+
+  function frameDelayMs() {
+    return Math.max(50, Math.round(GOES_FRAME_MS / speed));
   }
 
   function waitForTiles() {
@@ -320,6 +321,15 @@ export function createSatelliteLayer(map) {
     showLive();
   }
 
+  function armPlayTimer() {
+    clearInterval(playTimer);
+    playTimer = setInterval(() => {
+      if (!playing || !frames.length) return;
+      frameIndex = (frameIndex + 1) % frames.length;
+      applyFrame(frames[frameIndex]);
+    }, frameDelayMs());
+  }
+
   async function startPlayback() {
     playing = false;
     clearInterval(playTimer);
@@ -343,11 +353,7 @@ export function createSatelliteLayer(map) {
       playBtn.textContent = "Pause";
       playBtn.setAttribute("aria-label", "Pause satellite loop");
       applyFrame(frames[0]);
-      playTimer = setInterval(() => {
-        if (!playing || !frames.length) return;
-        frameIndex = (frameIndex + 1) % frames.length;
-        applyFrame(frames[frameIndex]);
-      }, GOES_FRAME_MS);
+      armPlayTimer();
     } catch (err) {
       error = err.message || "Satellite loop unavailable";
       stopPlayback();
@@ -402,6 +408,12 @@ export function createSatelliteLayer(map) {
     if (playing) startPlayback();
   });
 
+  speedSelect.addEventListener("change", () => {
+    speed = Number(speedSelect.value) || 1;
+    persist();
+    if (playing) armPlayTimer();
+  });
+
   return {
     id: "satellite",
     name: "GOES East",
@@ -438,7 +450,7 @@ export function createSatelliteLayer(map) {
     },
     async enable() {
       enabled = true;
-      playback.hidden = false;
+      setPlaybackVisible(true);
       try {
         ensureLayer();
         await loadTimes();
@@ -459,7 +471,7 @@ export function createSatelliteLayer(map) {
       liveTimer = null;
       playBtn.textContent = "Play";
       playBtn.setAttribute("aria-label", "Play satellite loop");
-      playback.hidden = true;
+      setPlaybackVisible(false);
       if (layer) {
         map.removeLayer(layer);
         layer.clearFrameCache?.();

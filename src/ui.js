@@ -32,12 +32,22 @@ function saveGroups(groupsState) {
   }
 }
 
+function savePanelOpen(open) {
+  try {
+    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    all._panel = { ...(all._panel || {}), open };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function createLayerPanel(groups) {
   const list = document.getElementById("layer-list");
   const statusEl = document.getElementById("status");
   const panel = document.getElementById("panel");
   const openBtn = document.getElementById("panel-open");
-  const closeBtn = document.getElementById("panel-close");
+  const minBtn = document.getElementById("panel-min");
   const state = loadState();
   const groupsState = state._groups || {};
   const cards = new Map();
@@ -46,9 +56,10 @@ export function createLayerPanel(groups) {
   function setOpen(open) {
     panel.hidden = !open;
     openBtn.hidden = open;
+    savePanelOpen(open);
   }
 
-  closeBtn.addEventListener("click", () => setOpen(false));
+  minBtn.addEventListener("click", () => setOpen(false));
   openBtn.addEventListener("click", () => setOpen(true));
 
   function mountLayer(layer, parent) {
@@ -171,7 +182,9 @@ export function createLayerPanel(groups) {
     statusEl.className = "status ok";
   }
 
-  if (window.matchMedia("(max-width: 720px)").matches) {
+  if (window.matchMedia("(max-width: 720px)").matches && state._panel?.open == null) {
     setOpen(false);
+  } else {
+    setOpen(state._panel?.open !== false);
   }
 }

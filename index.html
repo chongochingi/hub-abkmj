@@ -19,31 +19,34 @@
   <body>
     <div id="map"></div>
 
-    <aside id="panel" class="panel" aria-label="Map layers">
+    <aside id="panel" class="panel" aria-label="Data">
       <header class="panel-head">
         <div>
-          <a class="brand" href="https://abkmj.com">hub.abkmj.com</a>
+          <div class="brand">Data</div>
           <p class="panel-sub">Radar · aircraft · wildfire</p>
         </div>
-        <button id="panel-close" class="icon-btn" aria-label="Close layers">
-          ✕
+        <button id="panel-min" class="icon-btn panel-min" aria-label="Minimize data">
+          –
         </button>
       </header>
 
       <div id="layer-list" class="layer-list"></div>
 
       <footer class="panel-foot">
-        <div id="status" class="status">Connecting…</div>
-        <div class="links">
-          <a href="https://atm.abkmj.com" target="_blank" rel="noreferrer">ATM</a>
-          <a href="https://adsb.abkmj.com" target="_blank" rel="noreferrer">Feed</a>
-          <a href="https://abkmj.com" target="_blank" rel="noreferrer">Blog</a>
+        <div class="panel-foot-row">
+          <div id="status" class="status">Connecting…</div>
+          <div class="links">
+            <a href="https://atm.abkmj.com" target="_blank" rel="noreferrer">ATM</a>
+            <a href="https://adsb.abkmj.com" target="_blank" rel="noreferrer">Feed</a>
+            <a href="https://abkmj.com" target="_blank" rel="noreferrer">Blog</a>
+          </div>
         </div>
+        <div id="theme-toggle" class="theme-toggle" aria-label="Map theme"></div>
       </footer>
     </aside>
 
-    <button id="panel-open" class="fab" aria-label="Open layers" hidden>
-      Layers
+    <button id="panel-open" class="fab" aria-label="Open data" hidden>
+      Data
     </button>
 
     <aside id="birdnet-panel" class="panel panel-right" aria-label="Audio">

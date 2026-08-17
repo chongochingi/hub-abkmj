@@ -97,6 +97,12 @@ function feedById(id) {
   return AUDIO_FEEDS.find((f) => f.id === id) || AUDIO_FEEDS[0];
 }
 
+function clampHighpassHz(value, fallback = 2000) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(8000, Math.max(20, Math.round(n)));
+}
+
 export function createBirdnetPanel() {
   const panel = document.getElementById("birdnet-panel");
   const openBtn = document.getElementById("birdnet-open");
@@ -116,6 +122,12 @@ export function createBirdnetPanel() {
   let sourceId = null;
   let sourceName = "Yard";
   let feed = feedById(loadPanelState().feed);
+  let highpassOn = loadPanelState().highpass !== false;
+  let audioCtx = null;
+  let mediaSource = null;
+  let highpassNodes = [];
+  const HIGHPASS_OFF_HZ = 10;
+  let highpassHz = clampHighpassHz(loadPanelState().highpassHz, 2000);
 
   const clipAudio = new Audio();
   clipAudio.preload = "none";
@@ -139,6 +151,20 @@ export function createBirdnetPanel() {
           <button type="button" class="meso-chip bn-listen" data-kind="bird">Listen</button>
           <span class="bn-meta radar-hint"></span>
         </div>
+        <label class="check-row bn-highpass">
+          <input type="checkbox" class="bn-highpass-input" />
+          Filter
+          <input
+            type="number"
+            class="bn-highpass-hz"
+            min="20"
+            max="8000"
+            step="50"
+            inputmode="numeric"
+            aria-label="High-pass cutoff in hertz"
+          />
+          Hz and below
+        </label>
         <div class="bn-list"></div>
       </div>
     </section>
@@ -168,10 +194,58 @@ export function createBirdnetPanel() {
 
   const birdListenBtn = body.querySelector('.bn-listen[data-kind="bird"]');
   const atcListenBtn = body.querySelector('.bn-listen[data-kind="atc"]');
+  const highpassInput = body.querySelector(".bn-highpass-input");
+  const highpassHzInput = body.querySelector(".bn-highpass-hz");
   const player = body.querySelector(".bn-player");
   const list = body.querySelector(".bn-list");
   const meta = body.querySelector(".bn-meta");
   const atcMeta = body.querySelector(".bn-atc-meta");
+  player.crossOrigin = "anonymous";
+  highpassInput.checked = highpassOn;
+  highpassHzInput.value = String(highpassHz);
+
+  function highpassCutoff() {
+    return highpassOn && feed.kind === "bird" ? highpassHz : HIGHPASS_OFF_HZ;
+  }
+
+  function applyHighpass() {
+    if (!audioCtx || !highpassNodes.length) return;
+    const hz = highpassCutoff();
+    const now = audioCtx.currentTime;
+    for (const node of highpassNodes) {
+      node.frequency.cancelScheduledValues(now);
+      node.frequency.setValueAtTime(hz, now);
+    }
+  }
+
+  function ensureAudioGraph() {
+    if (audioCtx) {
+      applyHighpass();
+      return;
+    }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    player.crossOrigin = "anonymous";
+    audioCtx = new Ctx();
+    mediaSource = audioCtx.createMediaElementSource(player);
+    highpassNodes = [0, 1, 2].map(() => {
+      const node = audioCtx.createBiquadFilter();
+      node.type = "highpass";
+      node.frequency.value = highpassCutoff();
+      node.Q.value = Math.SQRT1_2;
+      return node;
+    });
+    mediaSource.connect(highpassNodes[0]);
+    highpassNodes[0].connect(highpassNodes[1]);
+    highpassNodes[1].connect(highpassNodes[2]);
+    highpassNodes[2].connect(audioCtx.destination);
+  }
+
+  async function resumeAudioGraph() {
+    ensureAudioGraph();
+    if (audioCtx?.state === "suspended") await audioCtx.resume();
+    applyHighpass();
+  }
 
   function setOpen(open) {
     panel.hidden = !open;
@@ -329,12 +403,14 @@ export function createBirdnetPanel() {
     const playlist = String(started.playlist_url || "").replace(/^\/api\/v2\//, `${BIRDNET_API}/`);
     if (!playlist) throw new Error("BirdNET did not return a playlist");
 
+    await resumeAudioGraph();
     const { default: Hls } = await import("hls.js");
     if (Hls.isSupported()) {
       hls = new Hls({ enableWorker: true, lowLatencyMode: true });
       hls.loadSource(playlist);
       hls.attachMedia(player);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        applyHighpass();
         player.play().catch(() => {});
       });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
@@ -345,6 +421,7 @@ export function createBirdnetPanel() {
       });
     } else if (player.canPlayType("application/vnd.apple.mpegurl")) {
       player.src = playlist;
+      await resumeAudioGraph();
       await player.play();
     } else {
       throw new Error("This browser cannot play the live stream");
@@ -385,6 +462,7 @@ export function createBirdnetPanel() {
     }
     player.src = url;
     player.load();
+    if (mediaSource) applyHighpass();
     await player.play();
     player.onerror = () => {
       error = `${feed.label} interrupted`;
@@ -446,6 +524,44 @@ export function createBirdnetPanel() {
 
   birdListenBtn.addEventListener("click", () => toggleListen("bird"));
   atcListenBtn.addEventListener("click", () => toggleListen("atc"));
+
+  highpassInput.addEventListener("change", () => {
+    highpassOn = highpassInput.checked;
+    savePanelState({ highpass: highpassOn });
+    if (listening && feed.kind === "bird") {
+      ensureAudioGraph();
+      if (audioCtx?.state === "suspended") audioCtx.resume();
+    }
+    applyHighpass();
+  });
+
+  function commitHighpassHz(raw, persist) {
+    const next = clampHighpassHz(raw, highpassHz);
+    highpassHz = next;
+    if (document.activeElement !== highpassHzInput) {
+      highpassHzInput.value = String(next);
+    }
+    if (persist) {
+      highpassHzInput.value = String(next);
+      savePanelState({ highpassHz: next });
+    }
+    applyHighpass();
+  }
+
+  highpassHzInput.addEventListener("input", () => {
+    if (highpassHzInput.value === "") return;
+    commitHighpassHz(highpassHzInput.value, false);
+  });
+  highpassHzInput.addEventListener("change", () => {
+    commitHighpassHz(highpassHzInput.value, true);
+  });
+  highpassHzInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitHighpassHz(highpassHzInput.value, true);
+      highpassHzInput.blur();
+    }
+  });
 
   body.querySelector(".bn-feeds").addEventListener("click", (event) => {
     const btn = event.target.closest("[data-feed]");
