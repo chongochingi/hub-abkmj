@@ -273,6 +273,7 @@ export function createSatelliteLayer(map) {
       maxZoom: 12,
       maxNativeZoom: 8,
       crossOrigin: true,
+      noWrap: true,
     });
     layer.addTo(map);
     layer.bringToBack();

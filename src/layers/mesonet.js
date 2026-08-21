@@ -1,10 +1,13 @@
 import L from "leaflet";
 import {
+  MESONET_METEOGRAM_URL,
   MESONET_POLL_MS,
+  MESONET_STATION_URL,
   MESONET_URL,
   MESONET_VARS,
   STORAGE_KEY,
 } from "../config.js";
+import { attachSoundingPopup } from "../sounding.js";
 
 const FROM_DEG = {
   N: 0,
@@ -111,6 +114,7 @@ function popupHtml(s) {
     s.wspd != null
       ? `${s.wdir || "—"} ${Math.round(s.wspd)} mph (${Math.round(mphToKnots(s.wspd))} kt)${s.wmax != null ? ` · gust ${Math.round(s.wmax)} mph` : ""}`
       : "—";
+  const stid = String(s.id || "").toLowerCase();
   return `
     <div class="popup-kicker">Oklahoma Mesonet</div>
     <div class="popup-title">${s.name}</div>
@@ -119,6 +123,11 @@ function popupHtml(s) {
     <div class="popup-row">Wind ${wind}</div>
     <div class="popup-row">Rain today ${fmt(s.rain, '"', 2)}</div>
     ${s.pres != null ? `<div class="popup-row">Pressure ${s.pres.toFixed(1)} mb</div>` : ""}
+    <div class="popup-row">
+      <a href="${MESONET_STATION_URL}${stid}" target="_blank" rel="noreferrer">Station</a>
+      · <a href="${MESONET_METEOGRAM_URL}${stid}" target="_blank" rel="noreferrer">Meteogram</a>
+    </div>
+    <div data-sounding></div>
   `;
 }
 
@@ -300,6 +309,13 @@ export function createMesonetLayer(map) {
     return map.getZoom() >= 8;
   }
 
+  function hydratePopup(marker) {
+    attachSoundingPopup(marker, () => {
+      const s = marker._hub;
+      return { lat: s?.lat, lon: s?.lon, stationId: s?.id };
+    });
+  }
+
   function renderMarker(s) {
     const icon = makeIcon(s, variable, showLabels());
     const existing = markers.get(s.id);
@@ -310,9 +326,11 @@ export function createMesonetLayer(map) {
       existing._hub = s;
       return;
     }
-    const marker = L.marker([s.lat, s.lon], { icon, zIndexOffset: 280 })
-      .bindPopup(popupHtml(s));
+    const marker = L.marker([s.lat, s.lon], { icon, zIndexOffset: 280 }).bindPopup(popupHtml(s), {
+      maxWidth: 320,
+    });
     marker._hub = s;
+    hydratePopup(marker);
     marker.addTo(group);
     markers.set(s.id, marker);
   }

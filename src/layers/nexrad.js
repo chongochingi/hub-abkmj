@@ -519,6 +519,7 @@ export function createNexradLayer(map) {
       updateWhenZooming: false,
       updateWhenIdle: false,
       keepBuffer: 3,
+      noWrap: true,
     });
     // Seed live bust so createTile and setFrame share one generation.
     layer._liveBust = Date.now();

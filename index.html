@@ -23,11 +23,14 @@
       <header class="panel-head">
         <div>
           <div class="brand">Data</div>
-          <p class="panel-sub">Radar · aircraft · wildfire</p>
+          <p class="panel-sub">Weather · aircraft · fire</p>
         </div>
-        <button id="panel-min" class="icon-btn panel-min" aria-label="Minimize data">
-          –
-        </button>
+        <div class="panel-head-actions">
+          <button id="layers-clear" class="panel-action" type="button">Clear all</button>
+          <button id="panel-min" class="icon-btn panel-min" aria-label="Minimize data">
+            –
+          </button>
+        </div>
       </header>
 
       <div id="layer-list" class="layer-list"></div>
@@ -55,9 +58,12 @@
           <div class="brand">Audio</div>
           <p id="birdnet-sub" class="panel-sub">Yard · ATC</p>
         </div>
-        <button id="birdnet-min" class="icon-btn bn-min" aria-label="Minimize audio">
-          –
-        </button>
+        <div class="panel-head-actions">
+          <button id="audio-off" class="panel-action" type="button">Turn off all</button>
+          <button id="birdnet-min" class="icon-btn bn-min" aria-label="Minimize audio">
+            –
+          </button>
+        </div>
       </header>
       <div id="birdnet-body" class="bn-body"></div>
       <footer class="panel-foot">

@@ -166,7 +166,21 @@ export function createLayerPanel(groups) {
     const card = cards.get(layer.id);
     const count = layer.getCount();
     card.querySelector(".count").textContent = count == null ? "" : String(count);
+    updateGroupMeta();
     updateStatus();
+  }
+
+  function updateGroupMeta() {
+    list.querySelectorAll(".source-group").forEach((section) => {
+      const group = groups.find((g) => g.id === section.dataset.source);
+      if (!group) return;
+      const on = group.layers.filter((layer) => {
+        const card = cards.get(layer.id);
+        return card?.querySelector(".toggle")?.getAttribute("aria-pressed") === "true";
+      }).length;
+      const meta = section.querySelector(".source-meta");
+      if (meta) meta.textContent = on ? `${on} on` : "";
+    });
   }
 
   function updateStatus() {
@@ -181,6 +195,10 @@ export function createLayerPanel(groups) {
     statusEl.textContent = `Live · ${n} aircraft`;
     statusEl.className = "status ok";
   }
+
+  document.getElementById("layers-clear")?.addEventListener("click", () => {
+    for (const layer of layers) setLayer(layer, false);
+  });
 
   if (window.matchMedia("(max-width: 720px)").matches && state._panel?.open == null) {
     setOpen(false);

@@ -27,6 +27,11 @@ export function createTheme(map) {
     attribution: base.attribution,
     subdomains: "abcd",
     maxZoom: 20,
+    noWrap: true,
+    bounds: [
+      [-85, -180],
+      [85, 180],
+    ],
   }).addTo(map);
 
   function renderToggle() {

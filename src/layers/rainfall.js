@@ -58,6 +58,7 @@ export function createRainfallLayer(map) {
       className: "mrms-tiles",
       attribution: "MRMS QPE © Iowa Environmental Mesonet / NSSL",
       maxZoom: 16,
+      noWrap: true,
     });
     layer.addTo(map);
   }

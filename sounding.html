@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skew-T</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #020617;
+        color: #eaedf3;
+        font-family: "IBM Plex Sans", system-ui, sans-serif;
+      }
+      header {
+        padding: 10px 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+      }
+      .sub {
+        margin: 3px 0 0;
+        font-size: 0.78rem;
+        color: #94a3b8;
+      }
+      .stage {
+        height: calc(100% - 54px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        overflow: auto;
+      }
+      img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        background: #fff;
+        border-radius: 4px;
+      }
+      .sub a {
+        color: #38bdf8;
+      }
+      .overlay {
+        color: #94a3b8;
+        font-size: 0.9rem;
+      }
+      .overlay.err {
+        color: #f87171;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="title">Skew-T</h1>
+      <p id="sub" class="sub"></p>
+    </header>
+    <div class="stage">
+      <div id="loading" class="overlay">Loading Skew-T…</div>
+      <img id="plot" alt="Skew-T diagram" hidden />
+    </div>
+    <script type="module" src="/src/sounding-view.js"></script>
+  </body>
+</html>

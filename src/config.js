@@ -108,11 +108,36 @@ export const BIRDNET_POLL_MS = 20 * 1000;
 export const BIRDNET_HEARTBEAT_MS = 20 * 1000;
 export const BIRDNET_RECENT_LIMIT = 20;
 export const LIVEATC_PROXY = "/api/liveatc";
+export const NWR_PROXY = "/api/nwr";
 export const AUDIO_FEEDS = [
   { id: "bird", label: "Yard", kind: "bird" },
-  { id: "kokc_twr", label: "KOKC Twr", kind: "atc", mount: "kokc_twr" },
-  { id: "koun_twr", label: "Westheimer", kind: "atc", mount: "koun_twr" },
-  { id: "ktul1", label: "KTUL", kind: "atc", mount: "ktul1" },
+  { id: "kokc_twr", label: "KOKC Twr", kind: "atc", mount: "kokc_twr", lat: 35.3931, lon: -97.6007 },
+  { id: "koun_twr", label: "Westheimer", kind: "atc", mount: "koun_twr", lat: 35.2456, lon: -97.4721 },
+  { id: "ktul1", label: "KTUL", kind: "atc", mount: "ktul1", lat: 36.1984, lon: -95.8881 },
+  {
+    id: "wxk85",
+    label: "WXK85 OKC",
+    kind: "nwr",
+    mount: "OK-OklahomaCity-WXK85",
+    lat: 35.5682,
+    lon: -97.4891,
+  },
+  {
+    id: "wxk86",
+    label: "WXK86 Lawton",
+    kind: "nwr",
+    mount: "OK-Lawton-WXK86",
+    lat: 34.5922,
+    lon: -98.4911,
+  },
+  {
+    id: "kih27",
+    label: "KIH27 Tulsa",
+    kind: "nwr",
+    mount: "OK-Tulsa-KIH27",
+    lat: 36.0211,
+    lon: -95.6563,
+  },
 ];
 
 export const DEFAULT_LAKE_STATE = "ok";
@@ -211,6 +236,67 @@ export const LAKE_USACE_CODES = {
   "07229445": "DRAP",
   "07333010": "ATOK",
 };
+
+export const USGS_QUAKE_FEED_BASE =
+  "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary";
+export const USGS_QUAKE_POLL_MS = 2 * 60 * 1000;
+export const USGS_QUAKE_PERIODS = [
+  { id: "hour", label: "Past hour" },
+  { id: "day", label: "Past day" },
+  { id: "week", label: "Past 7 days" },
+  { id: "month", label: "Past 30 days" },
+];
+export const USGS_QUAKE_MAGS = [
+  { id: "all", label: "All magnitudes" },
+  { id: "2.5", label: "M2.5+" },
+  { id: "4.5", label: "M4.5+" },
+  { id: "significant", label: "Significant" },
+];
+export const DEFAULT_QUAKE_PERIOD = "week";
+export const DEFAULT_QUAKE_MAG = "2.5";
+
+export const GLM_PRODUCT = "GOESEastGLMFEDRadC";
+export const GLM_REFRESH_MS = 60 * 1000;
+export const GLM_TILE_URL = "/api/re-tiles/{product}_{time}/{z}/{x}/{y}.png";
+
+export const SPC_OUTLOOK_BASE =
+  "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer";
+export const SPC_OUTLOOK_DAYS = [
+  { id: "1", label: "Day 1", layer: 1 },
+  { id: "2", label: "Day 2", layer: 9 },
+  { id: "3", label: "Day 3", layer: 17 },
+];
+export const SPC_POLL_MS = 5 * 60 * 1000;
+
+export const METAR_URL = "/api/metar";
+export const METAR_POLL_MS = 2 * 60 * 1000;
+export const METAR_MIN_ZOOM = 6;
+
+export const RIVERS_URL =
+  "https://mapservices.weather.noaa.gov/eventdriven/rest/services/water/riv_gauges/MapServer/0/query";
+export const RIVERS_POLL_MS = 5 * 60 * 1000;
+
+export const AIRNOW_URL =
+  "https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/AirNowLatestContoursCombined/FeatureServer/0/query?where=1%3D1&outFields=gridcode,Timestamp&outSR=4326&f=geojson&resultRecordCount=2000";
+export const SMOKE_URL =
+  "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/NDGD_SmokeForecast_v1/FeatureServer/0/query?where=1%3D1&outFields=smoke_classdesc,referencedate&outSR=4326&f=geojson&resultRecordCount=2000";
+export const AIR_POLL_MS = 10 * 60 * 1000;
+
+export const RAOB_NETWORK_URL =
+  "https://mesonet.agron.iastate.edu/geojson/network.py?network=RAOB";
+export const RAOB_JSON_URL = "https://mesonet.agron.iastate.edu/json/raob.py";
+/** SPC NSHARP observed Skew-T GIFs (same product as /exper/soundings/). */
+export const SPC_SOUNDING_BASE = "https://www.spc.noaa.gov/exper/soundings";
+export const RAOB_NEAR_KM = 45;
+
+export const MESONET_STATION_URL = "https://www.mesonet.org/weather/local?stid=";
+export const MESONET_METEOGRAM_URL = "https://www.mesonet.org/weather/meteogram?stid=";
+
+export const ODOT_CAMERAS_URL =
+  "/api/oktraffic/MapCameras?filter=%7B%22limit%22%3A5000%7D";
+export const ODOT_STREAM_URL =
+  "/api/oktraffic/MapCameras/{id}/streamDictionary";
+export const ODOT_CAMERAS_POLL_MS = 10 * 60 * 1000;
 
 export const STORAGE_KEY = "hub-abkmj-layers";
 

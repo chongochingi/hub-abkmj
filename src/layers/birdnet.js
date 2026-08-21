@@ -1,3 +1,4 @@
+import L from "leaflet";
 import {
   AUDIO_FEEDS,
   BIRDNET_API,
@@ -5,6 +6,7 @@ import {
   BIRDNET_POLL_MS,
   BIRDNET_RECENT_LIMIT,
   LIVEATC_PROXY,
+  NWR_PROXY,
   STORAGE_KEY,
 } from "../config.js";
 
@@ -97,13 +99,13 @@ function feedById(id) {
   return AUDIO_FEEDS.find((f) => f.id === id) || AUDIO_FEEDS[0];
 }
 
-function clampHighpassHz(value, fallback = 2000) {
+function clampHighpassHz(value, fallback = 1000) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(8000, Math.max(20, Math.round(n)));
 }
 
-export function createBirdnetPanel() {
+export function createBirdnetPanel(map) {
   const panel = document.getElementById("birdnet-panel");
   const openBtn = document.getElementById("birdnet-open");
   const minBtn = document.getElementById("birdnet-min");
@@ -127,16 +129,23 @@ export function createBirdnetPanel() {
   let mediaSource = null;
   let highpassNodes = [];
   const HIGHPASS_OFF_HZ = 10;
-  let highpassHz = clampHighpassHz(loadPanelState().highpassHz, 2000);
+  let highpassHz = clampHighpassHz(loadPanelState().highpassHz, 1000);
 
   const clipAudio = new Audio();
   clipAudio.preload = "none";
   const saved = loadPanelState();
   const groupsState = saved.groups || {};
   const atcFeeds = AUDIO_FEEDS.filter((f) => f.kind === "atc");
+  const nwrFeeds = AUDIO_FEEDS.filter((f) => f.kind === "nwr");
 
   function groupCollapsed(id, fallback) {
     return groupsState[id]?.collapsed ?? fallback;
+  }
+
+  function feedChips(feeds) {
+    return feeds
+      .map((f) => `<button type="button" class="meso-chip" data-feed="${esc(f.id)}">${esc(f.label)}</button>`)
+      .join("");
   }
 
   body.innerHTML = `
@@ -154,6 +163,7 @@ export function createBirdnetPanel() {
         <label class="check-row bn-highpass">
           <input type="checkbox" class="bn-highpass-input" />
           Filter
+          <button type="button" class="bn-hz-step" data-delta="-50" aria-label="Decrease cutoff 50 Hz">−</button>
           <input
             type="number"
             class="bn-highpass-hz"
@@ -163,6 +173,7 @@ export function createBirdnetPanel() {
             inputmode="numeric"
             aria-label="High-pass cutoff in hertz"
           />
+          <button type="button" class="bn-hz-step" data-delta="50" aria-label="Increase cutoff 50 Hz">+</button>
           Hz and below
         </label>
         <div class="bn-list"></div>
@@ -175,17 +186,28 @@ export function createBirdnetPanel() {
         <span class="source-name">ATC</span>
       </button>
       <div class="source-body">
-        <div class="meso-vars bn-feeds">
-          ${atcFeeds
-            .map(
-              (f) =>
-                `<button type="button" class="meso-chip" data-feed="${esc(f.id)}">${esc(f.label)}</button>`,
-            )
-            .join("")}
+        <div class="meso-vars bn-feeds" data-feed-group="atc">
+          ${feedChips(atcFeeds)}
         </div>
         <div class="bn-live">
           <button type="button" class="meso-chip bn-listen" data-kind="atc">Listen</button>
           <span class="bn-atc-meta radar-hint"></span>
+        </div>
+      </div>
+    </section>
+    <section class="source-group${groupCollapsed("nwr", false) ? " is-collapsed" : ""}" data-audio-group="nwr">
+      <button type="button" class="source-head" aria-expanded="${!groupCollapsed("nwr", false)}">
+        <span class="source-chevron" aria-hidden="true">▾</span>
+        <span class="layer-swatch" style="color:#fbbf24;background:#fbbf24"></span>
+        <span class="source-name">Weather Radio</span>
+      </button>
+      <div class="source-body">
+        <div class="meso-vars bn-feeds" data-feed-group="nwr">
+          ${feedChips(nwrFeeds)}
+        </div>
+        <div class="bn-live">
+          <button type="button" class="meso-chip bn-listen" data-kind="nwr">Listen</button>
+          <span class="bn-nwr-meta radar-hint"></span>
         </div>
       </div>
     </section>
@@ -194,15 +216,49 @@ export function createBirdnetPanel() {
 
   const birdListenBtn = body.querySelector('.bn-listen[data-kind="bird"]');
   const atcListenBtn = body.querySelector('.bn-listen[data-kind="atc"]');
+  const nwrListenBtn = body.querySelector('.bn-listen[data-kind="nwr"]');
   const highpassInput = body.querySelector(".bn-highpass-input");
   const highpassHzInput = body.querySelector(".bn-highpass-hz");
   const player = body.querySelector(".bn-player");
   const list = body.querySelector(".bn-list");
   const meta = body.querySelector(".bn-meta");
   const atcMeta = body.querySelector(".bn-atc-meta");
+  const nwrMeta = body.querySelector(".bn-nwr-meta");
   player.crossOrigin = "anonymous";
   highpassInput.checked = highpassOn;
   highpassHzInput.value = String(highpassHz);
+
+  let feedMarker = null;
+
+  function feedIcon(label, color) {
+    return L.divIcon({
+      className: "atc-map-icon",
+      html: `<div class="atc-map-pin" title="${esc(label)}">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" fill="#0f172a" stroke="${color}" stroke-width="1.5"/>
+          <path d="M12 5v14M5 12h14" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="atc-map-label" style="color:${color};border-color:${color}66">${esc(label)}</span>
+      </div>`,
+      iconSize: [88, 28],
+      iconAnchor: [44, 14],
+    });
+  }
+
+  function updateFeedMarker() {
+    if (feedMarker) {
+      map.removeLayer(feedMarker);
+      feedMarker = null;
+    }
+    const pinKind = feed.kind === "atc" || feed.kind === "nwr";
+    if (!listening || !pinKind || feed.lat == null || feed.lon == null) return;
+    const color = feed.kind === "nwr" ? "#fbbf24" : "#38bdf8";
+    feedMarker = L.marker([feed.lat, feed.lon], {
+      icon: feedIcon(feed.label, color),
+      zIndexOffset: 900,
+      interactive: false,
+    }).addTo(map);
+  }
 
   function highpassCutoff() {
     return highpassOn && feed.kind === "bird" ? highpassHz : HIGHPASS_OFF_HZ;
@@ -254,7 +310,7 @@ export function createBirdnetPanel() {
   }
 
   function feedLabel() {
-    return feed.kind === "atc" ? feed.label : sourceName;
+    return feed.kind === "bird" ? sourceName : feed.label;
   }
 
   function setStatus() {
@@ -267,7 +323,9 @@ export function createBirdnetPanel() {
       ? `Live · ${feedLabel()}`
       : feed.kind === "atc"
         ? "LiveATC"
-        : "Live detections";
+        : feed.kind === "nwr"
+          ? "Weather Radio"
+          : "Live detections";
     statusEl.className = "status ok";
     openBtn.textContent = listening ? `${feed.label} · live` : "Audio";
   }
@@ -275,21 +333,27 @@ export function createBirdnetPanel() {
   function persistListenUi() {
     const birdOn = listening && feed.kind === "bird";
     const atcOn = listening && feed.kind === "atc";
+    const nwrOn = listening && feed.kind === "nwr";
     birdListenBtn.textContent = birdOn ? "Stop" : "Listen";
     birdListenBtn.classList.toggle("is-on", birdOn);
     atcListenBtn.textContent = atcOn ? "Stop" : "Listen";
     atcListenBtn.classList.toggle("is-on", atcOn);
+    nwrListenBtn.textContent = nwrOn ? "Stop" : "Listen";
+    nwrListenBtn.classList.toggle("is-on", nwrOn);
     body.querySelectorAll("[data-feed]").forEach((btn) => {
       btn.classList.toggle("is-on", btn.dataset.feed === feed.id);
     });
     if (atcMeta) atcMeta.textContent = feed.kind === "atc" ? feed.label : "LiveATC.net";
+    if (nwrMeta) nwrMeta.textContent = feed.kind === "nwr" ? feed.label : "NOAA Weather Radio";
+    updateFeedMarker();
     setStatus();
   }
 
   function renderList() {
-    if (subEl) subEl.textContent = "Yard · ATC";
+    if (subEl) subEl.textContent = "Yard · ATC · NWR";
     if (meta) meta.textContent = `${detections.length} recent`;
     if (atcMeta) atcMeta.textContent = feed.kind === "atc" ? feed.label : "LiveATC.net";
+    if (nwrMeta) nwrMeta.textContent = feed.kind === "nwr" ? feed.label : "NOAA Weather Radio";
     if (!detections.length) {
       list.innerHTML = `<div class="radar-hint">No recent detections</div>`;
       return;
@@ -365,6 +429,18 @@ export function createBirdnetPanel() {
     sse = null;
   }
 
+  function stopClips() {
+    clipAudio.pause();
+    clipAudio.removeAttribute("src");
+    clipAudio.load();
+  }
+
+  async function stopAllAudio() {
+    stopClips();
+    if (listening) await stopListen();
+    else persistListenUi();
+  }
+
   async function stopListen() {
     listening = false;
     clearInterval(listenTimer);
@@ -437,10 +513,11 @@ export function createBirdnetPanel() {
     }, BIRDNET_HEARTBEAT_MS);
   }
 
-  async function startAtcListen() {
-    const mount = String(feed.mount || "").replace(/[^A-Za-z0-9_]/g, "");
-    if (!mount) throw new Error("Unknown LiveATC feed");
-    const url = `${LIVEATC_PROXY}/${mount}?t=${Date.now()}`;
+  async function startStreamListen() {
+    const mount = String(feed.mount || "").replace(/[^A-Za-z0-9_-]/g, "");
+    if (!mount) throw new Error(`Unknown ${feed.kind === "nwr" ? "weather radio" : "LiveATC"} feed`);
+    const base = feed.kind === "nwr" ? NWR_PROXY : LIVEATC_PROXY;
+    const url = `${base}/${mount}?t=${Date.now()}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10000);
     try {
@@ -472,7 +549,7 @@ export function createBirdnetPanel() {
   }
 
   async function startListen() {
-    if (feed.kind === "atc") await startAtcListen();
+    if (feed.kind === "atc" || feed.kind === "nwr") await startStreamListen();
     else await startBirdListen();
     listening = true;
     persistListenUi();
@@ -487,6 +564,7 @@ export function createBirdnetPanel() {
     savePanelState({
       feed: feed.id,
       ...(feed.kind === "atc" ? { atcFeed: feed.id } : {}),
+      ...(feed.kind === "nwr" ? { nwrFeed: feed.id } : {}),
     });
     renderList();
     persistListenUi();
@@ -511,6 +589,8 @@ export function createBirdnetPanel() {
         if (kind === "bird" && feed.kind !== "bird") await setFeed("bird");
         else if (kind === "atc" && feed.kind !== "atc") {
           await setFeed(loadPanelState().atcFeed || atcFeeds[0]?.id || "kokc_twr");
+        } else if (kind === "nwr" && feed.kind !== "nwr") {
+          await setFeed(loadPanelState().nwrFeed || nwrFeeds[0]?.id || "wxk85");
         }
         if (!listening) await startListen();
         error = null;
@@ -524,6 +604,7 @@ export function createBirdnetPanel() {
 
   birdListenBtn.addEventListener("click", () => toggleListen("bird"));
   atcListenBtn.addEventListener("click", () => toggleListen("atc"));
+  nwrListenBtn.addEventListener("click", () => toggleListen("nwr"));
 
   highpassInput.addEventListener("change", () => {
     highpassOn = highpassInput.checked;
@@ -563,9 +644,18 @@ export function createBirdnetPanel() {
     }
   });
 
-  body.querySelector(".bn-feeds").addEventListener("click", (event) => {
-    const btn = event.target.closest("[data-feed]");
-    if (btn) setFeed(btn.dataset.feed);
+  body.querySelectorAll(".bn-hz-step").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const delta = Number(btn.dataset.delta) || 0;
+      commitHighpassHz(highpassHz + delta, true);
+    });
+  });
+
+  body.querySelectorAll(".bn-feeds").forEach((group) => {
+    group.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-feed]");
+      if (btn) setFeed(btn.dataset.feed);
+    });
   });
 
   body.querySelectorAll("[data-audio-group]").forEach((section) => {
@@ -586,6 +676,10 @@ export function createBirdnetPanel() {
     if (!id) return;
     clipAudio.src = `${BIRDNET_API}/media/audio?id=${encodeURIComponent(id)}`;
     clipAudio.play().catch(() => {});
+  });
+
+  document.getElementById("audio-off")?.addEventListener("click", () => {
+    stopAllAudio();
   });
 
   minBtn.addEventListener("click", () => setOpen(false));

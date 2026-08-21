@@ -10,7 +10,7 @@ A single map for live aircraft, RadarScope-class NEXRAD, NWS hazards, GOES, Okla
 - **Mesonet** — [Oklahoma Mesonet](https://www.mesonet.org/about/data-descriptions/current-observations-csv) wind barbs, rain, temp, humidity.
 - **Precipitation** — [MRMS](https://mesonet.agron.iastate.edu/ogc/) 1 / 24 / 72-hour QPE.
 - **Hazards** — NWS storm-based warning polygons (IEM), SPC/NWS watches, NEXRAD SCIT storm tracks (for selected radars), and local storm reports.
-- **Audio** — right-side panel (minimizable) with collapsible **BirdNET** (yard detections + listen) and **ATC** ([LiveATC](https://www.liveatc.net/) KOKC Twr, Max Westheimer / KOUN, KTUL). LiveATC is proxied through an Icecast metadata stripper at `/api/liveatc/` so browsers can play it.
+- **Audio** — right-side panel (minimizable) with collapsible **BirdNET** (yard detections + listen), **ATC** ([LiveATC](https://www.liveatc.net/) KOKC Twr, Max Westheimer / KOUN, KTUL), and **Weather Radio** (WXK85 OKC, WXK86 Lawton, KIH27 Tulsa via [wxradio.org](https://wxradio.org)). LiveATC is proxied through an Icecast metadata stripper at `/api/liveatc/`; NWR is proxied at `/api/nwr/`.
 - **Lakes** — Oklahoma [USGS](https://waterdata.usgs.gov/) lake / reservoir stage (gage height or surface elevation).
 - **Wildfire** — incidents and burn perimeters together, with a shared recency filter.
 

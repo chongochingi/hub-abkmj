@@ -45,10 +45,10 @@ function firePopup(props) {
 }
 
 function markerSize(acres) {
-  if (acres >= 10000) return 22;
-  if (acres >= 1000) return 16;
-  if (acres >= 100) return 12;
-  return 9;
+  if (acres >= 10000) return 34;
+  if (acres >= 1000) return 26;
+  if (acres >= 100) return 20;
+  return 16;
 }
 
 function parseFireTime(value) {
@@ -124,18 +124,26 @@ async function fetchGeoJson(urls) {
   throw new Error(lastError || "Wildfire feed unavailable");
 }
 
+function fireIcon(acres) {
+  const size = markerSize(acres);
+  const hot = acres >= 1000 ? "#ea580c" : "#f97316";
+  return L.divIcon({
+    className: "fire-marker",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: `<svg class="fire-icon" viewBox="0 0 24 24" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+      <path fill="${hot}" stroke="#fff7ed" stroke-width="1.2"
+        d="M12 2c0 4-3 5.5-3 9a3 3 0 0 0 6 0c0-2.5-1.5-4-1.5-6.5C14 7 16 9 16 12a4 4 0 0 1-8 0c0-2 1-3.5 2-5.5 0 3-2 4.5-2 8a6 6 0 0 0 12 0c0-4-2-6-2-10z"/>
+    </svg>`,
+  });
+}
+
 export function createWildfireLayer(map) {
   const incidents = L.geoJSON(null, {
     pointToLayer(feature, latlng) {
       const acres = acresOf(feature.properties || {});
-      const size = markerSize(acres);
       return L.marker(latlng, {
-        icon: L.divIcon({
-          className: "fire-marker",
-          iconSize: [size, size],
-          iconAnchor: [size / 2, size / 2],
-          html: `<div class="fire-dot" style="background:${acres >= 1000 ? "#ea580c" : "#f97316"}"></div>`,
-        }),
+        icon: fireIcon(acres),
         zIndexOffset: 300,
       });
     },
