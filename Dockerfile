@@ -1,5 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
+ARG VITE_CARTO_API_KEY
+ENV VITE_CARTO_API_KEY=$VITE_CARTO_API_KEY
 COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .

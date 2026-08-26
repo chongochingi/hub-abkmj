@@ -50,18 +50,6 @@ export default defineConfig({
         secure: true,
         rewrite: (path) => path.replace(/^\/api\/oktraffic/, "/api"),
       },
-      "/api/re-tiles": {
-        target: "https://realearth.ssec.wisc.edu",
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/api\/re-tiles/, "/tiles"),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.removeHeader("referer");
-            proxyReq.removeHeader("origin");
-          });
-        },
-      },
     },
   },
   preview: {

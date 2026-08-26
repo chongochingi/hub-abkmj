@@ -7,7 +7,9 @@ import {
 import { distanceToFeatureKm, haversineKm } from "./geo.js";
 import { esc } from "./html.js";
 
-const POLL_MS = 60 * 1000;
+const WARN_POLL_MS = 60 * 1000;
+const QUAKE_POLL_MS = 2 * 60 * 1000;
+const FIRE_POLL_MS = 3 * 60 * 1000;
 const SEEN_KEY = "hub-abkmj-alerts-seen";
 const MAX_TOASTS = 4;
 const TOAST_MS = 20000;
@@ -87,7 +89,21 @@ function showToast({ id, kind, title, body, onClick }) {
 async function fetchJson(url) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (data?.error) throw new Error(data.error.message || "Invalid payload");
+  return data;
+}
+
+async function fetchFirstOk(urls) {
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      return await fetchJson(url);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("No sources");
 }
 
 function checkQuakes() {
@@ -118,7 +134,7 @@ function checkQuakes() {
 }
 
 function checkWildfires() {
-  fetchJson(WILDFIRE_INCIDENT_URLS[0])
+  fetchFirstOk(WILDFIRE_INCIDENT_URLS)
     .then((data) => {
       for (const f of data.features || []) {
         const props = f.properties || {};
@@ -133,7 +149,7 @@ function checkWildfires() {
           km <= FIRE_CLOSE_KM || (km <= FIRE_NEAR_KM && acres >= FIRE_ACRES_MIN);
         if (!nearby) continue;
         const name = props.IncidentName || props.incident_name || "Wildfire";
-        const id = `fire-${props.irwinID || props.objectId || name}-${lat}-${lon}`;
+        const id = `fire-${props.IrwinID || props.IRWINID || props.irwinID || props.OBJECTID || props.objectId || name}-${lat}-${lon}`;
         showToast({
           id,
           kind: "Wildfire",
@@ -172,13 +188,14 @@ function checkWarnings() {
     .catch(() => {});
 }
 
-function tick() {
+export function startAlertMonitor() {
+  checkWarnings();
   checkQuakes();
   checkWildfires();
-  checkWarnings();
-}
-
-export function startAlertMonitor() {
-  tick();
-  return setInterval(tick, POLL_MS);
+  const timers = [
+    setInterval(checkWarnings, WARN_POLL_MS),
+    setInterval(checkQuakes, QUAKE_POLL_MS),
+    setInterval(checkWildfires, FIRE_POLL_MS),
+  ];
+  return () => timers.forEach(clearInterval);
 }

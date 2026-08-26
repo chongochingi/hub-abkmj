@@ -20,17 +20,23 @@ Layer on/off state, collapsed sections, and overlay options are saved in `localS
 
 ```bash
 cd hub-abkmj
+cp .env.example .env   # add your CARTO Basemaps API key
 npm install
 npm run dev
 ```
 
 Open http://localhost:5173. Vite proxies `/api/aircraft` to the ATM API.
 
+Basemaps use [CARTO raster tiles](https://carto.com/basemaps) (Voyager / Dark Matter). Set `VITE_CARTO_API_KEY` in `.env` so tiles load without the API watermark.
+
 ## Deploy (Docker + Nginx Proxy Manager)
 
 ```bash
+cp .env.example .env   # if you have not already
 docker compose up -d --build
 ```
+
+Docker passes `VITE_CARTO_API_KEY` from `.env` into the Vite build at image build time.
 
 That publishes the app on **port 5003** and joins `infra_default` so NPM can reach the container as `hub-abkmj`.
 

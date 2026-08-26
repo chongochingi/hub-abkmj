@@ -2,7 +2,7 @@
  * Aircraft marker shapes from tar1090 / globe.adsbexchange.com (wiedehopf/tar1090 markers.js).
  */
 
-export const KINDS = {
+const KINDS = {
   AIRLINER: "airliner",
   AIRLINER_NARROW: "airliner-narrow",
   JET_SWEPT: "jet-swept",
@@ -361,7 +361,7 @@ export function kindFor(ac, onGround) {
   return inferFromDescription(ac.desc) || KINDS.AIRLINER_NARROW;
 }
 
-export function rotatesWithTrack(kind) {
+function rotatesWithTrack(kind) {
   return kind !== KINDS.BALLOON && kind !== KINDS.GROUND;
 }
 

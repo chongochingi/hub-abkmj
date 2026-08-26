@@ -107,7 +107,7 @@ export function colorForAircraft(ac) {
   return hslToCss(h, s, l);
 }
 
-export function colorForAltitude(ft, onGround = false) {
+function colorForAltitude(ft, onGround = false) {
   const { h, s, l } = hslFor(ft, onGround);
   return hslToCss(h, s, l);
 }

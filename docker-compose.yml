@@ -1,6 +1,9 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_CARTO_API_KEY: ${VITE_CARTO_API_KEY}
     image: hub-abkmj:latest
     container_name: hub-abkmj
     restart: unless-stopped

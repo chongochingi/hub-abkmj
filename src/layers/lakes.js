@@ -9,6 +9,7 @@ import {
   USGS_LAKES_POLL_MS,
   usgsLakesUrl,
 } from "../config.js";
+import { esc } from "../html.js";
 
 const PARAM_PRIORITY = {
   "62615": 0,
@@ -16,14 +17,6 @@ const PARAM_PRIORITY = {
   "00062": 2,
   "00065": 3,
 };
-
-function esc(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
 
 function shortName(name) {
   return String(name || "Lake")

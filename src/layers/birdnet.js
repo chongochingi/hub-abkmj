@@ -9,14 +9,7 @@ import {
   NWR_PROXY,
   STORAGE_KEY,
 } from "../config.js";
-
-function esc(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
+import { esc } from "../html.js";
 
 function csrfToken() {
   const match = document.cookie.match(/(?:^|; )csrf=([^;]*)/);
@@ -422,6 +415,9 @@ export function createBirdnetPanel(map) {
     sse.addEventListener("detection", onEvent);
     sse.addEventListener("pending", onEvent);
     sse.onmessage = onEvent;
+    sse.onerror = () => {
+      /* EventSource reconnects; keep poll as fallback */
+    };
   }
 
   function closeSse() {

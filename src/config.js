@@ -37,15 +37,17 @@ export const LOOP_SPEED_OPTIONS = [
 ];
 export const DEFAULT_RADAR_SITES = ["TLX"];
 
-// Primary URL from the request. The ArcGIS org currently returns "Invalid URL",
-// so we fall back to Esri Living Atlas / NIFC current incidents.
+// Living Atlas first (stable). Legacy org URL kept as fallback.
+const WILDFIRE_INCIDENT_FIELDS =
+  "OBJECTID,IncidentName,DailyAcres,CalculatedAcres,DiscoveryAcres,PercentContained,POOState,POOCounty,FireCause,FireCauseGeneral,FireDiscoveryAge,IncidentTypeCategory,FireDiscoveryDateTime,IrwinID";
+const WILDFIRE_PERIMETER_FIELDS =
+  "OBJECTID,IncidentName,FeatureCategory,GISAcres,CreateDate,PolygonDateTime,CreateDateAge,IncidentTypeCategory,IRWINID";
 export const WILDFIRE_INCIDENT_URLS = [
-  "https://services3.arcgis.com/T4QDm6Co9ChOVI83/arcgis/rest/services/Wildfire_Current_Incidents/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson",
-  "https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/USA_Wildfires_v1/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson",
+  `https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/USA_Wildfires_v1/FeatureServer/0/query?where=1%3D1&outFields=${WILDFIRE_INCIDENT_FIELDS}&outSR=4326&f=geojson`,
+  `https://services3.arcgis.com/T4QDm6Co9ChOVI83/arcgis/rest/services/Wildfire_Current_Incidents/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson`,
 ];
 
-export const WILDFIRE_PERIMETER_URL =
-  "https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/USA_Wildfires_v1/FeatureServer/1/query?where=1%3D1&outFields=*&outSR=4326&f=geojson";
+export const WILDFIRE_PERIMETER_URL = `https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/USA_Wildfires_v1/FeatureServer/1/query?where=1%3D1&outFields=${WILDFIRE_PERIMETER_FIELDS}&outSR=4326&f=geojson`;
 
 export const WILDFIRE_POLL_MS = 5 * 60 * 1000;
 export const WILDFIRE_AGE_OPTIONS = [
@@ -255,9 +257,18 @@ export const USGS_QUAKE_MAGS = [
 export const DEFAULT_QUAKE_PERIOD = "week";
 export const DEFAULT_QUAKE_MAG = "2.5";
 
-export const GLM_PRODUCT = "GOESEastGLMFEDRadC";
-export const GLM_REFRESH_MS = 60 * 1000;
-export const GLM_TILE_URL = "/api/re-tiles/{product}_{time}/{z}/{x}/{y}.png";
+export const LIGHTNING_WS = [
+  "wss://ws1.blitzortung.org/",
+  "wss://ws7.blitzortung.org/",
+  "wss://ws8.blitzortung.org/",
+];
+export const LIGHTNING_RETENTION_MS = 15 * 60 * 1000;
+export const LIGHTNING_RETENTION_OPTIONS = [
+  { minutes: 5, label: "5 min" },
+  { minutes: 15, label: "15 min" },
+  { minutes: 30, label: "30 min" },
+  { minutes: 60, label: "1 hour" },
+];
 
 export const SPC_OUTLOOK_BASE =
   "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer";
@@ -284,7 +295,6 @@ export const AIR_POLL_MS = 10 * 60 * 1000;
 
 export const RAOB_NETWORK_URL =
   "https://mesonet.agron.iastate.edu/geojson/network.py?network=RAOB";
-export const RAOB_JSON_URL = "https://mesonet.agron.iastate.edu/json/raob.py";
 /** SPC NSHARP observed Skew-T GIFs (same product as /exper/soundings/). */
 export const SPC_SOUNDING_BASE = "https://www.spc.noaa.gov/exper/soundings";
 export const RAOB_NEAR_KM = 45;
@@ -300,15 +310,25 @@ export const ODOT_CAMERAS_POLL_MS = 10 * 60 * 1000;
 
 export const STORAGE_KEY = "hub-abkmj-layers";
 
+const CARTO_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+/** CARTO Basemaps API key — set VITE_CARTO_API_KEY in .env (see .env.example). */
+const CARTO_API_KEY = String(import.meta.env.VITE_CARTO_API_KEY || "").trim();
+
+function cartoRasterUrl(path) {
+  const base = `https://{s}.basemaps.cartocdn.com/${path}/{z}/{x}/{y}{r}.png`;
+  if (!CARTO_API_KEY) return base;
+  return `${base}?key=${encodeURIComponent(CARTO_API_KEY)}`;
+}
+
 export const MAP_BASES = {
   regular: {
-    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    url: cartoRasterUrl("rastertiles/voyager"),
+    attribution: CARTO_ATTRIBUTION,
   },
   dark: {
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    url: cartoRasterUrl("dark_all"),
+    attribution: CARTO_ATTRIBUTION,
   },
 };

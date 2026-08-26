@@ -8,14 +8,7 @@ import {
   USGS_QUAKE_PERIODS,
   USGS_QUAKE_POLL_MS,
 } from "../config.js";
-
-function esc(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
+import { esc } from "../html.js";
 
 function loadQuakeState() {
   try {

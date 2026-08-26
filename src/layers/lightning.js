@@ -1,5 +1,10 @@
 import L from "leaflet";
-import { GLM_PRODUCT, GLM_REFRESH_MS, GLM_TILE_URL, GOES_TIMES_URL, STORAGE_KEY } from "../config.js";
+import {
+  LIGHTNING_RETENTION_MS,
+  LIGHTNING_RETENTION_OPTIONS,
+  LIGHTNING_WS,
+  STORAGE_KEY,
+} from "../config.js";
 
 function loadState() {
   try {
@@ -19,142 +24,343 @@ function saveState(partial) {
   }
 }
 
-function isLightning(r, g, b) {
-  const max = r > g ? (r > b ? r : b) : g > b ? g : b;
-  const min = r < g ? (r < b ? r : b) : g < b ? g : b;
-  if (max - min < 28 || max < 40) return false;
-  if (b >= 70 && b >= r + 12) return true;
-  if (g >= 80 && b >= 70 && r < 90) return true;
-  if (r >= 160 && g >= 60 && b < 90) return true;
-  return false;
-}
-
-function punchWatermark(data) {
-  for (let i = 0; i < data.length; i += 4) {
-    if (!isLightning(data[i], data[i + 1], data[i + 2])) data[i + 3] = 0;
+/** Blitzortung frames are LZW-compressed JSON strings. */
+function decodeFrame(raw) {
+  const d = String(raw).split("");
+  let c = d[0];
+  let f = c;
+  const g = [c];
+  const e = {};
+  let o = 256;
+  for (let i = 1; i < d.length; i++) {
+    let a = d[i].charCodeAt(0);
+    a = a < 256 ? d[i] : e[a] || f + c;
+    g.push(a);
+    c = a.charAt(0);
+    e[o] = f + c;
+    o += 1;
+    f = a;
   }
+  return g.join("");
 }
 
-const GlmTiles = L.TileLayer.extend({
-  createTile(coords, done) {
-    const tile = document.createElement("canvas");
-    const size = this.getTileSize();
-    tile.width = size.x;
-    tile.height = size.y;
-    tile.className = "leaflet-tile";
-    this._paint(tile, coords, () => done(null, tile));
-    return tile;
+function strikeTimeMs(s) {
+  const t = Number(s?.time);
+  if (!Number.isFinite(t) || t <= 0) return Date.now();
+  if (t > 1e15) return Math.round(t / 1e6);
+  if (t > 1e12) return Math.round(t);
+  return Date.now();
+}
+
+function ageStyle(ageMs, retentionMs, opacity) {
+  const t = Math.min(1, Math.max(0, ageMs / retentionMs));
+  let r;
+  let g;
+  let b;
+  let a;
+  if (t < 0.08) {
+    r = 255;
+    g = 255;
+    b = 255;
+    a = 0.95;
+  } else if (t < 0.25) {
+    r = 253;
+    g = 224;
+    b = 71;
+    a = 0.9;
+  } else if (t < 0.5) {
+    r = 251;
+    g = 146;
+    b = 60;
+    a = 0.75;
+  } else if (t < 0.75) {
+    r = 249;
+    g = 115;
+    b = 22;
+    a = 0.55;
+  } else {
+    r = 148;
+    g = 163;
+    b = 184;
+    a = 0.35;
+  }
+  return `rgba(${r},${g},${b},${(a * opacity).toFixed(3)})`;
+}
+
+function retentionFromSaved(saved) {
+  const minutes = Number(saved?.minutes);
+  const opt = LIGHTNING_RETENTION_OPTIONS.find((o) => o.minutes === minutes);
+  return opt ? opt.minutes * 60 * 1000 : LIGHTNING_RETENTION_MS;
+}
+
+/** Simple bolt path in local coords centered on (0,0), pointing down. */
+function boltPath(ctx, x, y, scale) {
+  ctx.beginPath();
+  ctx.moveTo(x - 1.2 * scale, y - 5.5 * scale);
+  ctx.lineTo(x + 2.2 * scale, y - 5.5 * scale);
+  ctx.lineTo(x + 0.4 * scale, y - 0.8 * scale);
+  ctx.lineTo(x + 2.8 * scale, y - 0.8 * scale);
+  ctx.lineTo(x - 1.6 * scale, y + 5.5 * scale);
+  ctx.lineTo(x - 0.1 * scale, y + 0.6 * scale);
+  ctx.lineTo(x - 2.6 * scale, y + 0.6 * scale);
+  ctx.closePath();
+}
+
+const StrikeCanvas = L.Layer.extend({
+  initialize(options) {
+    L.setOptions(this, options);
+    this._strikes = [];
+    this._flash = [];
+    this._retentionMs = options.retentionMs || LIGHTNING_RETENTION_MS;
+    this._opacity = options.opacity ?? 0.9;
+    this._raf = null;
+    this._ageTimer = null;
+    this._onNeedRedraw = this._scheduleDraw.bind(this);
   },
 
-  setFrame(time) {
-    this._frameTime = time || null;
-    for (const key in this._tiles) {
-      const rec = this._tiles[key];
-      if (rec?.el && rec.coords) this._paint(rec.el, rec.coords);
-    }
+  onAdd(map) {
+    this._map = map;
+    this._canvas = L.DomUtil.create("canvas", "lightning-canvas");
+    this._ctx = this._canvas.getContext("2d");
+    map.getContainer().appendChild(this._canvas);
+    this._reset();
+    map.on("move zoom viewreset resize", this._onNeedRedraw);
+    this._ageTimer = setInterval(() => {
+      if (this._strikes.length) this._scheduleDraw();
+    }, 5000);
+    this._scheduleDraw();
   },
 
-  _paint(canvas, coords, done) {
-    const gen = (canvas._glmGen = (canvas._glmGen || 0) + 1);
-    const time = this._frameTime;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!time) {
-      done?.();
-      return;
+  onRemove(map) {
+    cancelAnimationFrame(this._raf);
+    this._raf = null;
+    clearInterval(this._ageTimer);
+    this._ageTimer = null;
+    map.off("move zoom viewreset resize", this._onNeedRedraw);
+    L.DomUtil.remove(this._canvas);
+    this._map = null;
+  },
+
+  setRetention(ms) {
+    this._retentionMs = ms;
+    this._prune(Date.now());
+    this._scheduleDraw();
+  },
+
+  setOpacity(value) {
+    this._opacity = value;
+    this._scheduleDraw();
+  },
+
+  addStrike(lat, lon, timeMs) {
+    const t = timeMs || Date.now();
+    this._strikes.push({ lat, lon, t });
+    this._flash.push({ lat, lon, t: performance.now() });
+    if (this._strikes.length > 25000) {
+      this._strikes.splice(0, this._strikes.length - 20000);
     }
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.referrerPolicy = "no-referrer";
-    img.onload = () => {
-      if (canvas._glmGen !== gen) return;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      try {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        punchWatermark(imageData.data);
-        ctx.putImageData(imageData, 0, 0);
-      } catch {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-      done?.();
-    };
-    img.onerror = () => {
-      if (canvas._glmGen === gen) done?.();
-    };
-    img.src = L.Util.template(this._url, {
-      product: GLM_PRODUCT,
-      time: String(time).replace(".", "_"),
-      z: coords.z,
-      x: coords.x,
-      y: coords.y,
+    this._scheduleDraw();
+  },
+
+  getCount() {
+    return this._strikes.length;
+  },
+
+  clear() {
+    this._strikes.length = 0;
+    this._flash.length = 0;
+    this._scheduleDraw();
+  },
+
+  _prune(now) {
+    const cut = now - this._retentionMs;
+    const first = this._strikes.findIndex((s) => s.t >= cut);
+    if (first > 0) this._strikes.splice(0, first);
+    else if (first < 0) this._strikes.length = 0;
+  },
+
+  _reset() {
+    if (!this._map || !this._canvas) return;
+    const size = this._map.getSize();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this._canvas.width = Math.round(size.x * dpr);
+    this._canvas.height = Math.round(size.y * dpr);
+    this._canvas.style.width = `${size.x}px`;
+    this._canvas.style.height = `${size.y}px`;
+    this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  },
+
+  _scheduleDraw() {
+    if (this._raf || !this._map) return;
+    this._raf = requestAnimationFrame(() => {
+      this._raf = null;
+      this._reset();
+      this._draw();
+      if (this._flash.length) this._scheduleDraw();
     });
+  },
+
+  _draw() {
+    if (!this._map || !this._canvas) return;
+    const map = this._map;
+    const ctx = this._ctx;
+    const size = map.getSize();
+    const now = Date.now();
+    const perf = performance.now();
+    const retention = this._retentionMs;
+    const opacity = this._opacity;
+    this._prune(now);
+    ctx.clearRect(0, 0, size.x, size.y);
+
+    const pad = 14;
+    for (let i = 0; i < this._strikes.length; i++) {
+      const s = this._strikes[i];
+      const age = now - s.t;
+      if (age < 0 || age > retention) continue;
+      const pt = map.latLngToContainerPoint([s.lat, s.lon]);
+      if (pt.x < -pad || pt.y < -pad || pt.x > size.x + pad || pt.y > size.y + pad) continue;
+      const scale = age < retention * 0.1 ? 1.15 : age < retention * 0.4 ? 1 : 0.85;
+      boltPath(ctx, pt.x, pt.y, scale);
+      ctx.fillStyle = ageStyle(age, retention, opacity);
+      ctx.fill();
+    }
+
+    const FLASH_MS = 1800;
+    this._flash = this._flash.filter((f) => perf - f.t <= FLASH_MS);
+    for (const f of this._flash) {
+      const age = perf - f.t;
+      const p = age / FLASH_MS;
+      const pt = map.latLngToContainerPoint([f.lat, f.lon]);
+      if (pt.x < -40 || pt.y < -40 || pt.x > size.x + 40 || pt.y > size.y + 40) continue;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 3 + p * 16, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(254, 240, 138, ${((1 - p) * 0.55 * opacity).toFixed(3)})`;
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+    }
   },
 });
 
 export function createLightningLayer(map) {
   const saved = loadState();
-  let opacity = saved.opacity ?? 0.85;
+  let opacity = saved.opacity ?? 0.9;
+  let retentionMs = retentionFromSaved(saved);
+
   let layer = null;
-  let timer = null;
   let enabled = false;
   let error = null;
   let onChange = () => {};
+  let extrasRoot = null;
+  let ws = null;
+  let wsIdx = 0;
+  let reconnectTimer = null;
+  let countTimer = null;
+  let count = 0;
 
   function persist() {
-    saveState({ opacity });
+    const minutes =
+      LIGHTNING_RETENTION_OPTIONS.find((o) => o.minutes * 60 * 1000 === retentionMs)?.minutes ?? 15;
+    saveState({ opacity, minutes });
   }
 
-  async function latestTime() {
-    const res = await fetch(`${GOES_TIMES_URL}?products=${GLM_PRODUCT}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Lightning times HTTP ${res.status}`);
-    const data = await res.json();
-    const list = data[GLM_PRODUCT] || [];
-    const ts = list[list.length - 1];
-    if (!ts) throw new Error("No GLM lightning frames");
-    return ts;
+  function renderExtras() {
+    if (!extrasRoot) return;
+    extrasRoot.querySelectorAll("[data-minutes]").forEach((btn) => {
+      const ms = Number(btn.dataset.minutes) * 60 * 1000;
+      btn.classList.toggle("is-on", ms === retentionMs);
+    });
   }
 
-  async function ensureLayer() {
-    const ts = await latestTime();
-    if (layer) {
-      layer.setOpacity(opacity);
-      layer.setFrame(ts);
+  function setStatus() {
+    const next = layer?.getCount() ?? 0;
+    if (next === count && !error) return;
+    count = next;
+    onChange();
+  }
+
+  function connect() {
+    disconnect(false);
+    const url = LIGHTNING_WS[wsIdx % LIGHTNING_WS.length];
+    let socket;
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      scheduleReconnect();
       return;
     }
-    layer = new GlmTiles(GLM_TILE_URL, {
-      opacity,
-      pane: "overlayPane",
-      className: "lightning-tiles",
-      attribution: "GOES GLM © NOAA / CIMSS RealEarth",
-      maxZoom: 12,
-      maxNativeZoom: 8,
-      crossOrigin: true,
-      noWrap: true,
-    });
-    layer.addTo(map);
-    layer.setFrame(ts);
+    ws = socket;
+    error = null;
+    onChange();
+    socket.onopen = () => {
+      error = null;
+      onChange();
+      try {
+        socket.send(JSON.stringify({ a: 111 }));
+      } catch {
+        /* closed */
+      }
+    };
+    socket.onmessage = (event) => {
+      try {
+        const s = JSON.parse(decodeFrame(event.data));
+        if (typeof s?.lat !== "number" || typeof s?.lon !== "number") return;
+        if (!Number.isFinite(s.lat) || !Number.isFinite(s.lon)) return;
+        if (Math.abs(s.lat) > 90 || Math.abs(s.lon) > 180) return;
+        layer?.addStrike(s.lat, s.lon, strikeTimeMs(s));
+      } catch {
+        /* keepalives / non-strike frames */
+      }
+    };
+    socket.onerror = () => {
+      try {
+        socket.close();
+      } catch {
+        /* ignore */
+      }
+    };
+    socket.onclose = () => {
+      if (!enabled) return;
+      error = "Lightning reconnecting…";
+      onChange();
+      scheduleReconnect();
+    };
   }
 
-  async function refresh() {
-    if (!enabled) return;
-    try {
-      await ensureLayer();
-      error = null;
-    } catch (err) {
-      error = err.message || "Lightning unavailable";
+  function scheduleReconnect() {
+    clearTimeout(reconnectTimer);
+    wsIdx += 1;
+    reconnectTimer = setTimeout(() => {
+      if (enabled) connect();
+    }, 2000);
+  }
+
+  function disconnect(clearError = true) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    if (ws) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      ws = null;
     }
-    onChange();
+    if (clearError) error = null;
   }
 
   return {
     id: "lightning",
     name: "Lightning",
-    description: "GOES GLM flash extent · last minute",
+    description: "Live strikes · white = newest",
     color: "#fde047",
     defaultOn: false,
     hasOpacity: true,
     getOpacity: () => opacity,
-    getCount: () => null,
+    getCount: () => count,
     getError: () => error,
     onChange(fn) {
       onChange = fn;
@@ -162,21 +368,54 @@ export function createLightningLayer(map) {
     setOpacity(value) {
       opacity = value;
       persist();
-      if (layer) layer.setOpacity(opacity);
+      layer?.setOpacity(opacity);
+    },
+    mountExtras(container) {
+      extrasRoot = container;
+      container.innerHTML = `
+        <div class="meso-vars">
+          ${LIGHTNING_RETENTION_OPTIONS.map(
+            (o) =>
+              `<button type="button" class="meso-chip" data-minutes="${o.minutes}">${o.label}</button>`,
+          ).join("")}
+        </div>
+      `;
+      renderExtras();
+      container.addEventListener("click", (event) => {
+        const btn = event.target.closest("[data-minutes]");
+        if (!btn) return;
+        retentionMs = Number(btn.dataset.minutes) * 60 * 1000;
+        persist();
+        layer?.setRetention(retentionMs);
+        renderExtras();
+        setStatus();
+      });
     },
     enable() {
       enabled = true;
-      refresh();
-      timer = setInterval(refresh, GLM_REFRESH_MS);
+      if (!layer) {
+        layer = new StrikeCanvas({ retentionMs, opacity });
+      } else {
+        layer.clear();
+        layer.setRetention(retentionMs);
+        layer.setOpacity(opacity);
+      }
+      layer.addTo(map);
+      connect();
+      countTimer = setInterval(setStatus, 5000);
+      setStatus();
     },
     disable() {
       enabled = false;
-      clearInterval(timer);
-      timer = null;
+      clearInterval(countTimer);
+      countTimer = null;
+      disconnect(true);
       if (layer) {
         map.removeLayer(layer);
-        layer = null;
+        layer.clear();
       }
+      count = 0;
+      onChange();
     },
   };
 }

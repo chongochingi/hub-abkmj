@@ -117,7 +117,7 @@ export function createStormTracksLayer(map, { getRadarIds } = {}) {
     enable() {
       group.addTo(map);
       tick();
-      timer = setInterval(tick, HAZARD_POLL_MS);
+      timer = setInterval(tick, Math.max(HAZARD_POLL_MS, 120_000));
     },
     disable() {
       clearInterval(timer);
