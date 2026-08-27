@@ -59,6 +59,7 @@ export const WILDFIRE_AGE_OPTIONS = [
   { hours: 336, label: "Past 14 days" },
   { hours: 720, label: "Past 30 days" },
 ];
+export const DEFAULT_WILDFIRE_AGE_HOURS = 24;
 
 export const MESONET_URL =
   "https://www.mesonet.org/data/public/mesonet/current/current.csv.txt";

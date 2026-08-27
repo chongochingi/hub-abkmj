@@ -1,5 +1,6 @@
 import L from "leaflet";
 import {
+  DEFAULT_WILDFIRE_AGE_HOURS,
   STORAGE_KEY,
   WILDFIRE_AGE_OPTIONS,
   WILDFIRE_INCIDENT_URLS,
@@ -84,9 +85,9 @@ function filterByAge(data, hours) {
 function loadMaxAgeHours() {
   try {
     const n = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}").wildfires?.maxAgeHours;
-    return WILDFIRE_AGE_OPTIONS.some((opt) => opt.hours === n) ? n : 0;
+    return WILDFIRE_AGE_OPTIONS.some((opt) => opt.hours === n) ? n : DEFAULT_WILDFIRE_AGE_HOURS;
   } catch {
-    return 0;
+    return DEFAULT_WILDFIRE_AGE_HOURS;
   }
 }
 
